@@ -2991,7 +2991,13 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
     // DEBUG: Log payload being sent to Google API
     log(`📤 [DEBUG] Sending to Google API:`, 'info');
     log(`   URL: https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoStartAndEndImage`);
-    log(`   Payload: ${JSON.stringify(requestPayload, null, 2).substring(0, 500)}...`);
+    log(`   FULL Payload:\n${JSON.stringify(requestPayload, null, 2)}`);
+
+    // Also check if endImage exists
+    log(`   [DEBUG] First request has endImage: ${requestPayload.requests[0].endImage ? 'YES' : 'NO'}`);
+    if (requestPayload.requests[0].endImage) {
+      log(`   [DEBUG] endImage mediaId: ${requestPayload.requests[0].endImage.mediaId?.substring(0, 50)}...`);
+    }
 
     const response = await axiosWithRetry({
       method: 'POST',
