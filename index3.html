@@ -599,20 +599,10 @@
           <!-- Tabs: Temp Session vs Saved Profiles -->
           <div class="session-tab-header">
             <button id="sessionTabTempBtn" class="session-tab-btn active" onclick="switchSessionTab('temp')">⚡ Temp Session</button>
-            <button id="sessionTabProfileBtn" class="session-tab-btn" onclick="switchSessionTab('profile')">💾 Saved Profiles</button>
           </div>
 
           <!-- TEMP SESSION TAB: chỉ dùng nhanh 1 account, không cần lưu profile -->
           <div id="sessionTempTab" class="session-tab-content">
-            <div class="input-group">
-              <label>Chọn Chrome Profile (trống = default)</label>
-              <select id="profileSelector" onchange="updateSelectedProfile()" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
-                <option value="">-- default (profile trắng) --</option>
-              </select>
-              <div style="font-size: 0.75em; color: #777; margin-top: 4px;">
-                Nếu không chọn gì sẽ dùng profile mặc định "default". Mỗi profile = 1 Chrome riêng.
-              </div>
-            </div>
             <div class="input-group">
               <button class="btn btn-primary" onclick="launchChrome()" style="width: 100%;">🚀 Khởi động Chrome</button>
             </div>
@@ -621,96 +611,7 @@
             <button class="btn btn-info" onclick="openFlowTab()">🎬 Mở Flow Tab</button>
 
             <div style="font-size: 0.75em; color: #777; margin-top: 8px;">
-              ⚡ Dùng khi cần login/bắt token nhanh cho 1 account, chưa cần lưu profile/token.
-            </div>
-          </div>
-
-          <!-- SAVED PROFILE TAB: quản lý nhiều account + proxy + token pool -->
-          <div id="sessionProfileTab" class="session-tab-content" style="display: none;">
-            <div class="input-group" style="margin-top: 4px; border-top: 2px solid #667eea; padding-top: 12px;">
-              <label style="font-weight: 600; color: #667eea;">💾 Lưu Profile mới (Chrome + Token + Proxy + Project)</label>
-            </div>
-
-            <div class="input-group">
-              <label>Tên profile</label>
-              <input type="text" id="newProfileName" placeholder="vd: main, kênh1, kênh2...">
-            </div>
-
-            <div class="input-group">
-              <label>🌐 Proxy (để trống = dùng local)</label>
-              <input type="text" id="tokenProxy" placeholder="ip:port:username:password">
-              <div style="font-size: 0.75em; color: #777; margin-top: 4px;">
-                VD: 61.52.195.100:41744:user:pass
-              </div>
-            </div>
-
-            <div class="input-group">
-              <label>📁 Project ID (để trống = dùng Project Settings)</label>
-              <input type="text" id="tokenProjectId" placeholder="Gán project cố định cho token này (hoặc để rỗng để dùng Project Settings)">
-              <div style="font-size: 0.75em; color: #777; margin-top: 4px;">
-                Mỗi profile thường có 1 project khác nhau
-              </div>
-            </div>
-
-            <div class="input-group">
-              <button class="btn btn-info" onclick="saveUnifiedProfile()" style="width: 100%;">💾 Lưu Profile</button>
-            </div>
-
-            <div class="input-group">
-              <button class="btn btn-secondary" onclick="testProxy()" style="width: 100%;">🔍 Test Proxy</button>
-            </div>
-            <div id="proxyTestResult" style="font-size: 0.8em; margin-top: 8px; padding: 8px; border-radius: 4px; display: none;"></div>
-
-            <!-- Load Token Section -->
-            <div class="input-group" style="margin-top: 20px; border-top: 2px solid #667eea; padding-top: 12px;">
-              <label style="font-weight: 600; color: #667eea;">📥 Chọn Token Đã Lưu</label>
-            </div>
-
-            <div class="input-group">
-              <select id="tokenSelector" onchange="updateSelectedToken()" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
-                <option value="">-- Chọn profile/token --</option>
-              </select>
-              <div style="font-size: 0.75em; color: #777; margin-top: 4px;">
-                Token sẽ hiển thị (proxy) hoặc (local). Khi chọn token, Chrome profile cùng tên sẽ được chọn luôn.
-              </div>
-            </div>
-
-            <div class="input-group" style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px;">
-              <button class="btn btn-success" onclick="loadProfileAndSession()" style="width: 100%;">📥 Load Profile</button>
-              <button class="btn btn-secondary" onclick="testProxyFromToken()" style="width: 100%;">🔍 Test</button>
-              <button class="btn btn-warning" onclick="editProxyFromToken()" style="width: 100%;">✏️ Edit</button>
-            </div>
-            <div id="tokenProxyTestResult" style="font-size: 0.8em; margin-top: 8px; padding: 8px; border-radius: 4px; display: none;"></div>
-
-            <!-- Multi-account Token Pool -->
-            <div class="input-group" style="margin-top: 16px; border-top: 2px dashed #ccc; padding-top: 10px;">
-              <label style="font-weight: 600; color: #667eea; display: flex; justify-content: space-between; align-items: center;">
-                <span>⚡ Multi Account Token Pool</span>
-                <span id="tokenPoolStatus" style="font-size: 0.75em; color: #555;">Chưa load pool</span>
-              </label>
-            </div>
-
-            <div class="token-pool-list" id="tokenCheckboxList">
-              <div style="font-size: 0.8em; color: #777;">Chưa có token nào. Hãy lưu token hoặc bấm Refresh.</div>
-            </div>
-
-            <div class="input-group" style="margin-top: 8px; display: grid; grid-template-columns: 1.3fr 0.7fr; gap: 8px;">
-              <button class="btn btn-primary" onclick="loadTokenPool()">⚡ Load Token Pool (multi acc + proxy)</button>
-              <button class="btn btn-secondary" onclick="loadTokenList()">🔄 Refresh danh sách</button>
-            </div>
-            <div style="font-size: 0.75em; color: #777; margin-top: 4px;">
-              Chọn nhiều token để gen ảnh song song (server sẽ round-robin qua từng token, dùng đúng proxy của từng account).
-            </div>
-
-            <!-- Edit Proxy Modal -->
-            <div id="editProxyModal" style="display: none; margin-top: 12px; padding: 12px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px;">
-              <div style="font-weight: 600; margin-bottom: 8px;">✏️ Sửa Token Config</div>
-              <input type="text" id="editProxyInput" placeholder="Proxy: ip:port:username:password (để trống = local)" style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 4px;">
-              <input type="text" id="editProjectIdInput" placeholder="Project ID (để trống = dùng Project Settings)" style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 4px;">
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                <button class="btn btn-success" onclick="saveEditedProxy()" style="width: 100%;">💾 Lưu</button>
-                <button class="btn btn-secondary" onclick="cancelEditProxy()" style="width: 100%;">❌ Hủy</button>
-              </div>
+              ⚡ Khởi động Chrome → Bắt token → Mở Flow tab để gen ảnh/video
             </div>
           </div>
 
@@ -993,7 +894,7 @@ Camera zoom in - out nhẹ nhàng"></textarea>
           </div>
           <div class="input-group">
             <label>Prompt</label>
-            <textarea id="testVideoPrompt" rows="2" placeholder="Camera moves forward into the scene"></textarea>
+            <textarea id="testVideoPrompt" rows="2" placeholder="camera xoay vòng tròn">camera xoay vòng tròn</textarea>
           </div>
           <div class="input-group">
             <button class="btn btn-primary" onclick="testGenerateVideoFromMediaId()">
@@ -1953,7 +1854,7 @@ Camera zoom in - out nhẹ nhàng"></textarea>
       }
     }
 
-    let selectedTokenName = '';  // Track selected token
+    // Removed: selectedTokenName variable (not needed for temp session)
 
     async function saveCredentials() {
       const tokenName = document.getElementById('tokenName').value.trim();
@@ -3004,8 +2905,8 @@ Camera zoom in - out nhẹ nhàng"></textarea>
               endImageMediaId: mediaId2,
               prompt: cleanPrompt,
               aspectRatio: state.aspectRatio.replace('IMAGE_', 'VIDEO_'),
-              seeds: seeds,
-              tokenName: selectedTokenName  // CRITICAL: Multi-lane support
+              seeds: seeds
+              // tokenName not needed - temp session uses active token automatically
             })
           });
 
@@ -3710,8 +3611,8 @@ Camera zoom in - out nhẹ nhàng"></textarea>
             endImageMediaId: mediaId2,
             prompt: prompt,
             aspectRatio: state.aspectRatio.replace('IMAGE_', 'VIDEO_'),
-            seeds: [seed],
-            tokenName: selectedTokenName  // CRITICAL: Multi-lane support
+            seeds: [seed]
+            // tokenName not needed - temp session uses active token automatically
           })
         });
 
