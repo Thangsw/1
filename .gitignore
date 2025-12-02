@@ -23,3 +23,7 @@ chrome-profiles/
 # Build outputs
 dist/
 build/
+
+# User data - tokens should be filled by users themselves
+tokens.txt
+tokens.xlsx
