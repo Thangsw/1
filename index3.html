@@ -30,13 +30,7 @@
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
       padding: 20px 30px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .header-content {
-      text-align: left;
+      text-align: center;
     }
 
     .header h1 {
@@ -48,28 +42,6 @@
     .header p {
       font-size: 1em;
       opacity: 0.9;
-    }
-
-    .header-btn {
-      padding: 12px 24px;
-      background: rgba(255,255,255,0.2);
-      border: 2px solid white;
-      color: white;
-      border-radius: 10px;
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 0.95em;
-      transition: all 0.3s;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .header-btn:hover {
-      background: white;
-      color: #667eea;
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
     }
 
     .main-content {
@@ -478,70 +450,6 @@
       gap: 8px;
     }
 
-    /* Session & Profile tabs */
-    .session-tab-header {
-      display: flex;
-      gap: 8px;
-      margin: 8px 0 12px;
-    }
-
-    .session-tab-btn {
-      flex: 1;
-      padding: 6px 10px;
-      border-radius: 999px;
-      border: none;
-      font-size: 0.8em;
-      font-weight: 600;
-      cursor: pointer;
-      background: #e9ecef;
-      color: #555;
-      transition: background 0.2s, color 0.2s, transform 0.2s;
-    }
-
-    .session-tab-btn.active {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: #fff;
-      transform: translateY(-1px);
-    }
-
-    .session-tab-content {
-      margin-top: 4px;
-    }
-
-    .token-pool-list {
-      max-height: 150px;
-      overflow-y: auto;
-      padding: 6px;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      background: #fff;
-      font-size: 0.8em;
-    }
-
-    .token-pool-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 4px 2px;
-      gap: 6px;
-    }
-
-    .token-pool-item label {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      cursor: pointer;
-    }
-
-    .token-pool-item span.token-proxy-tag {
-      font-size: 0.75em;
-      padding: 1px 6px;
-      border-radius: 999px;
-      background: #e3f2fd;
-      color: #1976d2;
-      white-space: nowrap;
-    }
-
     @media (max-width: 1400px) {
       .main-content {
         grid-template-columns: 300px 1fr;
@@ -569,13 +477,8 @@
 <body>
   <div class="container">
     <div class="header">
-      <div class="header-content">
-        <h1>🎨 Whisk + Veo3 - Auto Workflow v2</h1>
-        <p>Parallel queues • Retry mechanism • Error tracking • Session save • Continuous workflow</p>
-      </div>
-      <a href="lanes-manager.html" class="header-btn">
-        ⚙️ Quản lý Lanes
-      </a>
+      <h1>🎨 Whisk + Veo3 - Auto Workflow v2</h1>
+      <p>Parallel queues • Retry mechanism • Error tracking • Session save • Continuous workflow</p>
     </div>
 
     <div class="main-content">
@@ -596,22 +499,87 @@
             </div>
           </div>
 
-          <!-- Tabs: Temp Session vs Saved Profiles -->
-          <div class="session-tab-header">
-            <button id="sessionTabTempBtn" class="session-tab-btn active" onclick="switchSessionTab('temp')">⚡ Temp Session</button>
+          <!-- Khối session: chỉ để khởi động Chrome / bắt token / mở flow thủ công -->
+
+          <div class="input-group">
+            <label>Chọn Chrome Profile (trống = default)</label>
+            <select id="profileSelector" onchange="updateSelectedProfile()" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+              <option value="">-- default (profile trắng) --</option>
+            </select>
+            <div style="font-size: 0.75em; color: #777; margin-top: 4px;">
+              Nếu không chọn gì sẽ dùng profile mặc định "default". Mỗi profile = 1 Chrome riêng.
+            </div>
+          </div>
+          <div class="input-group">
+            <button class="btn btn-primary" onclick="launchChrome()" style="width: 100%;">🚀 Khởi động Chrome</button>
           </div>
 
-          <!-- TEMP SESSION TAB: chỉ dùng nhanh 1 account, không cần lưu profile -->
-          <div id="sessionTempTab" class="session-tab-content">
-            <div class="input-group">
-              <button class="btn btn-primary" onclick="launchChrome()" style="width: 100%;">🚀 Khởi động Chrome</button>
+          <button class="btn btn-warning" onclick="captureToken()">🔑 Bắt Token</button>
+          <button class="btn btn-info" onclick="openFlowTab()">🎬 Mở Flow Tab</button>
+
+          <div class="input-group" style="margin-top: 12px; border-top: 2px solid #667eea; padding-top: 12px;">
+            <label style="font-weight: 600; color: #667eea;">💾 Lưu Profile mới (Chrome + Token + Proxy + Project)</label>
+          </div>
+
+          <div class="input-group">
+            <label>Tên profile</label>
+            <input type="text" id="newProfileName" placeholder="vd: main, kênh1, kênh2...">
+          </div>
+
+          <div class="input-group">
+            <label>🌐 Proxy (để trống = dùng local)</label>
+            <input type="text" id="tokenProxy" placeholder="ip:port:username:password">
+            <div style="font-size: 0.75em; color: #777; margin-top: 4px;">
+              VD: 61.52.195.100:41744:user:pass
             </div>
+          </div>
 
-            <button class="btn btn-warning" onclick="captureToken()">🔑 Bắt Token</button>
-            <button class="btn btn-info" onclick="openFlowTab()">🎬 Mở Flow Tab</button>
+          <div class="input-group">
+            <label>📁 Project ID (để trống = dùng Project Settings)</label>
+            <input type="text" id="tokenProjectId" placeholder="Gán project cố định cho token này (hoặc để rỗng để dùng Project Settings)">
+            <div style="font-size: 0.75em; color: #777; margin-top: 4px;">
+              Mỗi profile thường có 1 project khác nhau
+            </div>
+          </div>
 
-            <div style="font-size: 0.75em; color: #777; margin-top: 8px;">
-              ⚡ Khởi động Chrome → Bắt token → Mở Flow tab để gen ảnh/video
+          <div class="input-group">
+            <button class="btn btn-info" onclick="saveUnifiedProfile()" style="width: 100%;">💾 Lưu Profile</button>
+          </div>
+
+          <div class="input-group">
+            <button class="btn btn-secondary" onclick="testProxy()" style="width: 100%;">🔍 Test Proxy</button>
+          </div>
+          <div id="proxyTestResult" style="font-size: 0.8em; margin-top: 8px; padding: 8px; border-radius: 4px; display: none;"></div>
+
+          <!-- Load Token Section -->
+          <div class="input-group" style="margin-top: 20px; border-top: 2px solid #667eea; padding-top: 12px;">
+            <label style="font-weight: 600; color: #667eea;">📥 Chọn Token Đã Lưu</label>
+          </div>
+
+          <div class="input-group">
+            <select id="tokenSelector" onchange="updateSelectedToken()" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
+              <option value="">-- Chọn token --</option>
+            </select>
+            <div style="font-size: 0.75em; color: #777; margin-top: 4px;">
+              Token sẽ hiển thị (proxy) hoặc (local)
+            </div>
+          </div>
+
+          <div class="input-group" style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px;">
+            <button class="btn btn-success" onclick="loadProfileAndSession()" style="width: 100%;">📥 Load Profile</button>
+            <button class="btn btn-secondary" onclick="testProxyFromToken()" style="width: 100%;">🔍 Test</button>
+            <button class="btn btn-warning" onclick="editProxyFromToken()" style="width: 100%;">✏️ Edit</button>
+          </div>
+          <div id="tokenProxyTestResult" style="font-size: 0.8em; margin-top: 8px; padding: 8px; border-radius: 4px; display: none;"></div>
+
+          <!-- Edit Proxy Modal -->
+          <div id="editProxyModal" style="display: none; margin-top: 12px; padding: 12px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px;">
+            <div style="font-weight: 600; margin-bottom: 8px;">✏️ Sửa Token Config</div>
+            <input type="text" id="editProxyInput" placeholder="Proxy: ip:port:username:password (để trống = local)" style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 4px;">
+            <input type="text" id="editProjectIdInput" placeholder="Project ID (để trống = dùng Project Settings)" style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 4px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <button class="btn btn-success" onclick="saveEditedProxy()" style="width: 100%;">💾 Lưu</button>
+              <button class="btn btn-secondary" onclick="cancelEditProxy()" style="width: 100%;">❌ Hủy</button>
             </div>
           </div>
 
@@ -804,11 +772,10 @@ Prompt 1: A beautiful sunset
           <div class="input-group">
             <label>Video Prompts (mỗi dòng 1 prompt)</label>
             <div class="prompt-textarea-container">
-              <textarea id="videoPrompts" placeholder="Camera zoom in - out nhẹ nhàng
-Camera zoom in - out nhẹ nhàng
-Camera zoom in - out nhẹ nhàng
-Camera zoom in - out nhẹ nhàng
-Camera zoom in - out nhẹ nhàng"></textarea>
+              <textarea id="videoPrompts" placeholder="Camera pans slowly from left to right
+(continue) Zoom in on the mountains
+Camera moves forward into the scene
+(continue) Fade to black"></textarea>
             </div>
             <div class="submit-btn-container">
               <button class="btn btn-success btn-small" onclick="submitVideoPrompts()" style="flex: 1;">➕ Submit Video Prompts</button>
@@ -840,9 +807,9 @@ Camera zoom in - out nhẹ nhàng"></textarea>
             </label>
           </div>
           <div id="mediaIdInputContainer" style="display: none;">
-          <div class="input-group">
+            <div class="input-group">
               <label>MediaID List (mỗi dòng 1 mediaID)</label>
-              <textarea id="mediaIdList" rows="8" placeholder="CAMaJDY1ZTFkNGYyLThlYmEtNGEyNC05OTUyLTgyZGI5YmZhNGNjMSIEQ013QiokMjU0MzE3M2YtYTY1OS00NDY3LTlkZTgtNzEyY2UyZGFjYTgw&#10;CAMaJDY1ZTFkNGYyLThlYmEtNGEyNC05OTUyLTgyZGI5YmZhNGNjMSIEQ00wQiokM2Q2YjcyMGQtODgyNS00MmE2LWIxYmEtN2I5ZmI1ZmRlNDUx&#10;CAMaJDY1ZTFkNGYyLThlYmEtNGEyNC05OTUyLTgyZGI5YmZhNGNjMSIEQ000QiokMjI4MTc3NjEtZjllZS00Y2ZhLTk1OGQtZTM4OTQ5NDNhMzI0&#10;CAMaJDY1ZTFkNGYyLThlYmEtNGEyNC05OTUyLTgyZGI5YmZhNGNjMSIEQ004QiokYjJjYzBkZTMtYjczNi00YTJjLThhNjMtMDc4OWVkMDY3ZTU5&#10;CAMaJDY1ZTFkNGYyLThlYmEtNGEyNC05OTUyLTgyZGI5YmZhNGNjMSIEQ05BQiokYjJmYmMyY2YtMWZiZS00MDQ1LWFmYTAtMmIwZTMzNDEzYmRl&#10;CAMaJDY1ZTFkNGYyLThlYmEtNGEyNC05OTUyLTgyZGI5YmZhNGNjMSIEQ05FQiokNTYyNTFjNzEtOTY4OS00NDU3LTg1NTUtYzFkODMwMGM2MWVk"></textarea>
+              <textarea id="mediaIdList" rows="8" placeholder="CAMaJDAwNjNhNTEzLTQw...&#10;CAMaJDAwNjNhNTEzLTQw...&#10;CAMaJDAwNjNhNTEzLTQw..."></textarea>
             </div>
             <div style="font-size: 0.85em; color: #666; margin-top: -8px; margin-bottom: 12px;">
               💡 Paste mediaID từ file mediaIDs.txt hoặc gen ảnh ở trên
@@ -876,21 +843,11 @@ Camera zoom in - out nhẹ nhàng"></textarea>
           <h2>🧪 Test Gen Video từ MediaID</h2>
           <div class="input-group">
             <label>MediaID 1 (Start Image)</label>
-            <input
-              type="text"
-              id="testMediaId1"
-              value="CAMaJDY1ZTFkNGYyLThlYmEtNGEyNC05OTUyLTgyZGI5YmZhNGNjMSIEQ013QiokMjU0MzE3M2YtYTY1OS00NDY3LTlkZTgtNzEyY2UyZGFjYTgw"
-              placeholder="CAMaJDY1ZTFkNGYyLThlYmEtNGEyNC05OTUyLTgyZGI5YmZhNGNjMSIEQ013QiokMjU0MzE3M2YtYTY1OS00NDY3LTlkZTgtNzEyY2UyZGFjYTgw"
-            >
+            <input type="text" id="testMediaId1" placeholder="CAMaJGIyODVlYjZkLTA2NTMtNGFkMi1hYTJiLTFhMTcwYTg5ZmZlNyIDQ0FnKiQxZWE1YWQ5OC1kZGYxLTQ3NDUtYTRhZS0wMGRlMjMyNmQ1ZDQ">
           </div>
           <div class="input-group">
             <label>MediaID 2 (End Image)</label>
-            <input
-              type="text"
-              id="testMediaId2"
-              value="CAMaJDY1ZTFkNGYyLThlYmEtNGEyNC05OTUyLTgyZGI5YmZhNGNjMSIEQ00wQiokM2Q2YjcyMGQtODgyNS00MmE2LWIxYmEtN2I5ZmI1ZmRlNDUx"
-              placeholder="CAMaJDY1ZTFkNGYyLThlYmEtNGEyNC05OTUyLTgyZGI5YmZhNGNjMSIEQ00wQiokM2Q2YjcyMGQtODgyNS00MmE2LWIxYmEtN2I5ZmI1ZmRlNDUx"
-            >
+            <input type="text" id="testMediaId2" placeholder="CAMaJGIyODVlYjZkLsad33fgsfhYTJiLTFhMTcwYTg5ZmZlNyIDQ0FnKiQxZWE1YWQ5OC1kZGYxLTQ3NDUtYTRhZS0wMGRlMjMyNmQ1ZDQ">
           </div>
           <div class="input-group">
             <label>Prompt</label>
@@ -1107,30 +1064,6 @@ Camera zoom in - out nhẹ nhàng"></textarea>
       el.className = 'status-dot';
       if (status === 'active') el.classList.add('active');
       if (status === 'error') el.classList.add('error');
-    }
-
-    // Switch between Temp Session and Saved Profiles tabs
-    function switchSessionTab(tab) {
-      const tempTab = document.getElementById('sessionTempTab');
-      const profileTab = document.getElementById('sessionProfileTab');
-      const tempBtn = document.getElementById('sessionTabTempBtn');
-      const profileBtn = document.getElementById('sessionTabProfileBtn');
-
-      if (!tempTab || !profileTab || !tempBtn || !profileBtn) return;
-
-      if (tab === 'profile') {
-        tempTab.style.display = 'none';
-        profileTab.style.display = 'block';
-        tempBtn.classList.remove('active');
-        profileBtn.classList.add('active');
-        log('💾 Đang dùng chế độ PROFILE đã lưu (multi acc + proxy)', 'info');
-      } else {
-        tempTab.style.display = 'block';
-        profileTab.style.display = 'none';
-        tempBtn.classList.add('active');
-        profileBtn.classList.remove('active');
-        log('⚡ Đang dùng TEMP session (không lưu profile, 1 account)', 'info');
-      }
     }
 
     function toggleMediaIdMode() {
@@ -1651,7 +1584,7 @@ Camera zoom in - out nhẹ nhàng"></textarea>
     // ============================================
     // CHROME & TOKEN MANAGEMENT
     // ============================================
-    // Removed: selectedProfile variable (not needed for temp session)
+    let selectedProfile = '';  // Track selected profile
 
     // Lưu 1 profile thống nhất: Chrome profile + Token + Proxy + Project ID
     async function saveUnifiedProfile() {
@@ -1762,14 +1695,43 @@ Camera zoom in - out nhẹ nhàng"></textarea>
       }
     }
 
-    // Removed: loadProfileList() - not needed for temp session
-    // Removed: updateSelectedProfile() - not needed for temp session
+    async function loadProfileList() {
+      try {
+        const res = await fetch('/api/list-profiles');
+        const data = await res.json();
+        if (data.success) {
+          const selector = document.getElementById('profileSelector');
+          selector.innerHTML = '<option value="">-- Chọn profile --</option>';
+          data.profiles.forEach(profile => {
+            const option = document.createElement('option');
+            option.value = profile;
+            option.textContent = profile;
+            selector.appendChild(option);
+          });
+          log(`📋 Loaded ${data.profiles.length} profiles`, 'info');
+        }
+      } catch (err) {
+        log('❌ Lỗi load danh sách profiles: ' + err.message, 'error');
+      }
+    }
+
+    function updateSelectedProfile() {
+      selectedProfile = document.getElementById('profileSelector').value;
+      if (selectedProfile) {
+        log(`📌 Đã chọn profile: "${selectedProfile}"`, 'info');
+      }
+    }
 
     async function launchChrome() {
-      // Temp session always uses default profile
-      const profile = 'default';
+      let profile = selectedProfile || document.getElementById('profileSelector').value;
 
-      log(`🚀 Đang khởi động Chrome với profile mặc định...`, 'info');
+      // Nếu không chọn gì thì dùng profile mặc định "default"
+      if (!profile) {
+        profile = 'default';
+        log('ℹ️ Không chọn profile, dùng profile mặc định "default"', 'info');
+      }
+
+      log(`🚀 Đang khởi động Chrome với profile: "${profile}"...`, 'info');
       try {
         const res = await fetch('/api/launch-chrome', {
           method: 'POST',
@@ -1815,7 +1777,7 @@ Camera zoom in - out nhẹ nhàng"></textarea>
       }
     }
 
-    // Removed: selectedTokenName variable (not needed for temp session)
+    let selectedTokenName = '';  // Track selected token
 
     async function saveCredentials() {
       const tokenName = document.getElementById('tokenName').value.trim();
@@ -2118,47 +2080,20 @@ Camera zoom in - out nhẹ nhàng"></textarea>
 
         // Populate dropdown (danh sách profile/token)
         const selector = document.getElementById('tokenSelector');
-        if (selector) {
-          selector.innerHTML = '<option value="">-- Chọn profile/token --</option>';
-        }
-
-        // Populate multi-select token pool list
-        const checkboxContainer = document.getElementById('tokenCheckboxList');
-        if (checkboxContainer) {
-          checkboxContainer.innerHTML = '';
-        }
+        selector.innerHTML = '<option value="">-- Chọn profile/token --</option>';
 
         if (data.success && data.tokens && data.tokens.length > 0) {
           data.tokens.forEach(token => {
             const proxyLabel = token.hasProxy ? '🌐 proxy' : '🏠 local';
             const displayName = `${token.name} (${proxyLabel})`;
 
-            if (selector) {
-              const option = document.createElement('option');
-              option.value = token.name;
-              option.textContent = displayName;
-              selector.appendChild(option);
-            }
-
-            if (checkboxContainer) {
-              const row = document.createElement('div');
-              row.className = 'token-pool-item';
-              row.innerHTML = `
-                <label>
-                  <input type="checkbox" class="token-checkbox" value="${token.name}">
-                  <span>${token.name}</span>
-                </label>
-                <span class="token-proxy-tag">${proxyLabel}</span>
-              `;
-              checkboxContainer.appendChild(row);
-            }
+            const option = document.createElement('option');
+            option.value = token.name;
+            option.textContent = displayName;
+            selector.appendChild(option);
           });
-
           log(`📋 Tìm thấy ${data.tokens.length} profile/token đã lưu`, 'info');
         } else {
-          if (checkboxContainer) {
-            checkboxContainer.innerHTML = '<div style="font-size: 0.8em; color: #777;">Chưa có token/profile nào. Hãy lưu token trước.</div>';
-          }
           log('📋 Chưa có token/profile nào được lưu', 'info');
         }
       } catch (err) {
@@ -2198,7 +2133,23 @@ Camera zoom in - out nhẹ nhàng"></textarea>
       }
     }
 
-    // Removed: updateSelectedToken() - not needed for temp session
+    function updateSelectedToken() {
+      selectedTokenName = document.getElementById('tokenSelector').value;
+      if (selectedTokenName) {
+        log(`✅ Đã chọn token: "${selectedTokenName}"`, 'info');
+
+        // Đồng bộ luôn Chrome profile cùng tên để Khởi động Chrome dùng đúng profile
+        const profileSelect = document.getElementById('profileSelector');
+        if (profileSelect) {
+          const match = Array.from(profileSelect.options).find(opt => opt.value === selectedTokenName);
+          if (match) {
+            profileSelect.value = selectedTokenName;
+          }
+        }
+        selectedProfile = selectedTokenName;
+        log('🔗 Chrome profile sẽ dùng cùng tên với token đã chọn', 'info');
+      }
+    }
 
     async function openFlowTab() {
       log('🎬 Đang mở Flow tab...', 'info');
@@ -2365,19 +2316,65 @@ Camera zoom in - out nhẹ nhàng"></textarea>
     }
 
     function submitVideoPrompts() {
-      const allPrompts = parseVideoPrompts();
-      if (allPrompts.length === 0) {
+      const newPrompts = parseVideoPrompts();
+      if (newPrompts.length === 0) {
         log('⚠️ Không có video prompts mới để thêm', 'warning');
         return;
       }
 
-      // Không động vào videoQueue nữa. Chỉ thông báo đã cập nhật prompts
-      // và để checkAndCreateVideoTasks() tự map prompt → sceneIndex dựa trên
-      // số video đã gen trước đó (videosGenerated).
-      log(`✅ Video prompts đã cập nhật (${allPrompts.length} dòng). Video MỚI sẽ dùng prompts này từ vị trí tiếp theo`, 'success');
+      // CRITICAL FIX: Update prompts for videos in queue (not yet generated)
+      let updatedCount = 0;
 
-      // Gọi lại để tạo task cho những scene chưa có video (hoặc khi vừa thêm prompts mới)
-      checkAndCreateVideoTasks();
+      // Update existing queued videos with new prompts
+      for (let i = 0; i < Math.min(state.videoQueue.length, newPrompts.length); i++) {
+        const oldPrompt = state.videoQueue[i].prompt;
+        const newPrompt = newPrompts[i];
+
+        if (oldPrompt !== newPrompt) {
+          state.videoQueue[i].prompt = newPrompt;
+          updatedCount++;
+          log(`🔄 [Video ${state.videoQueue[i].sceneIndex + 1}] Prompt updated: "${newPrompt.substring(0, 40)}..."`, 'info');
+        }
+      }
+
+      // If there are more new prompts than existing queue items, add them
+      if (newPrompts.length > state.videoQueue.length) {
+        // Need to create new video tasks for the additional prompts
+        // This requires having image pairs available
+        const startIndex = state.videoQueue.length;
+        for (let i = startIndex; i < newPrompts.length; i++) {
+          const img1 = state.images[i];
+          const img2 = state.images[i + 1];
+
+          if (img1 && img2) {
+            state.videoQueue.push({
+              img1,
+              img2,
+              prompt: newPrompts[i],
+              sceneIndex: i,
+              attempts: 0
+            });
+            updatedCount++;
+            log(`➕ [Video ${i + 1}] Added new video with prompt: "${newPrompts[i].substring(0, 40)}..."`, 'success');
+          } else {
+            log(`⚠️ [Video ${i + 1}] Không thể thêm - thiếu ảnh (cần ảnh ${i + 1} và ${i + 2})`, 'warning');
+            break;
+          }
+        }
+      }
+
+      if (updatedCount > 0) {
+        log(`✅ Video prompts đã cập nhật: ${updatedCount} videos`, 'success');
+        updateStats();
+        updateVideoQueueDisplay();
+
+        // Start video queue if not already processing
+        if (!state.videoQueueProcessing) {
+          processVideoQueue();
+        }
+      } else {
+        log(`ℹ️ Không có thay đổi trong video prompts`, 'info');
+      }
     }
 
     // ============================================
@@ -2851,7 +2848,6 @@ Camera zoom in - out nhẹ nhàng"></textarea>
               prompt: cleanPrompt,
               aspectRatio: state.aspectRatio.replace('IMAGE_', 'VIDEO_'),
               seeds: seeds
-              // tokenName not needed - temp session uses active token automatically
             })
           });
 
@@ -3557,7 +3553,6 @@ Camera zoom in - out nhẹ nhàng"></textarea>
             prompt: prompt,
             aspectRatio: state.aspectRatio.replace('IMAGE_', 'VIDEO_'),
             seeds: [seed]
-            // tokenName not needed - temp session uses active token automatically
           })
         });
 

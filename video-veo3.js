@@ -272,15 +272,10 @@ const VideoVeo3 = (() => {
       durationSec = 8,
       seed = 0,
       projectId,
-      sceneId,
-      tokenName  // CRITICAL: Lane name for multi-account + proxy
+      sceneId
     } = args;
 
-    const laneTag = tokenName ? `[Lane: ${tokenName}]` : '';
-    console.log(`📺 ${laneTag} [startEndFlow] START`, { prompt, startImageMediaId, endImageMediaId, aspectRatio, projectId, sceneId });
-
     try {
-      console.log(`📤 ${laneTag} [startEndFlow] Submitting batch logs...`);
       await api.submitBatchLog(buildTextOrImageLog("VIDEOFX_CREATE_VIDEO", "TEXT_TO_VIDEO"));
       await api.submitBatchLog(buildTextOrImageLog("PINHOLE_GENERATE_VIDEO", "TEXT_TO_VIDEO"));
       await api.submitBatchLog(buildVideoTimerLog());
@@ -291,13 +286,8 @@ const VideoVeo3 = (() => {
     if (endImageMediaId)   payload.endImageMediaId   = endImageMediaId;
     if (projectId) payload.projectId = projectId;
     if (sceneId)   payload.sceneId   = sceneId;
-    if (tokenName) payload.tokenName = tokenName;  // CRITICAL: Pass tokenName to API
 
-    console.log(`🔄 ${laneTag} [startEndFlow] Calling api.generateStartEnd...`);
-    const result = await api.generateStartEnd(payload);
-    console.log(`✅ ${laneTag} [startEndFlow] Result:`, result);
-
-    return result;
+    return api.generateStartEnd(payload);
   }
 
   async function textToVideoFlow(args) {
@@ -307,20 +297,18 @@ const VideoVeo3 = (() => {
       aspectRatio = "VIDEO_ASPECT_RATIO_LANDSCAPE",
       videoModelKey = "veo_3_1_t2v_fast_ultra",
       seeds = [26907, 23736],
-      sceneIds,
-      tokenName  // CRITICAL: Lane name for multi-account + proxy
+      sceneIds
     } = args;
 
-    const laneTag = tokenName ? `[Lane: ${tokenName}]` : '';
-    console.log(`📺 ${laneTag} [textToVideoFlow] START`, { projectId, prompt, aspectRatio, seeds, sceneIds });
+    console.log(`📺 [textToVideoFlow] START`, { projectId, prompt, aspectRatio, seeds, sceneIds });
 
     try {
-      console.log(`📤 ${laneTag} [textToVideoFlow] Submitting batch logs...`);
+      console.log(`📤 [textToVideoFlow] Submitting batch logs...`);
       await api.submitBatchLog(buildTextOrImageLog("VIDEOFX_CREATE_VIDEO", "TEXT_TO_VIDEO"));
       await api.submitBatchLog(buildTextOrImageLog("PINHOLE_GENERATE_VIDEO", "TEXT_TO_VIDEO"));
       await api.submitBatchLog(buildVideoTimerLog());
     } catch (e) {
-      console.warn(`⚠️ ${laneTag} [textToVideoFlow] Batch log submission failed (non-critical):`, e);
+      console.warn(`⚠️ [textToVideoFlow] Batch log submission failed (non-critical):`, e);
     }
 
     const requests = seeds.map((seed, i) => ({
@@ -331,7 +319,7 @@ const VideoVeo3 = (() => {
       ...(sceneIds?.[i] ? { metadata: { sceneId: sceneIds[i] } } : {})
     }));
 
-    console.log(`🔄 ${laneTag} [textToVideoFlow] Calling api.generateText with ${requests.length} requests...`);
+    console.log(`🔄 [textToVideoFlow] Calling api.generateText with ${requests.length} requests...`);
 
     const result = await api.generateText({
       clientContext: {
@@ -339,11 +327,10 @@ const VideoVeo3 = (() => {
         tool: "PINHOLE",
         userPaygateTier: "PAYGATE_TIER_TWO"
       },
-      requests,
-      tokenName  // CRITICAL: Pass tokenName to API
+      requests
     });
 
-    console.log(`✅ ${laneTag} [textToVideoFlow] Result:`, result);
+    console.log(`✅ [textToVideoFlow] Result:`, result);
     return result;
   }
 
@@ -354,42 +341,38 @@ const VideoVeo3 = (() => {
   }
 
   async function pollOperation(opId, options = {}) {
-    const { intervalMs = 2500, maxTries = 120, tokenName } = options;  // CRITICAL: Add tokenName
-    const laneTag = tokenName ? `[Lane: ${tokenName}]` : '';
-    console.log(`🔄 ${laneTag} [pollOperation] START - opId: ${opId}, maxTries: ${maxTries}, interval: ${intervalMs}ms`);
+    const { intervalMs = 2500, maxTries = 120 } = options;
+    console.log(`🔄 [pollOperation] START - opId: ${opId}, maxTries: ${maxTries}, interval: ${intervalMs}ms`);
 
     for (let i = 0; i < maxTries; i++) {
-      console.log(`⏳ ${laneTag} [pollOperation] Poll attempt ${i + 1}/${maxTries} for ${opId.substring(0, 50)}...`);
+      console.log(`⏳ [pollOperation] Poll attempt ${i + 1}/${maxTries} for ${opId.substring(0, 50)}...`);
 
       // Send operations array to match server.js format
-      const res = await api.checkStatus({
-        operations: [{ operation: { name: opId } }],
-        tokenName  // CRITICAL: Pass tokenName to use same lane
-      });
+      const res = await api.checkStatus({ operations: [{ operation: { name: opId } }] });
 
       // Check if token expired (401 error)
       if (!res.success && res.tokenExpired) {
-        console.error(`❌ ${laneTag} [pollOperation] Token expired!`);
+        console.error(`❌ [pollOperation] Token expired!`);
         alert('⚠️ TOKEN ĐÃ HẾT HẠN!\n\nVui lòng:\n1. Click nút "Bắt Token" ở tab Settings\n2. Sau đó thử lại');
         throw new Error("Token expired - please refresh");
       }
 
       const op = res?.operations?.[0];
 
-      console.log(`📡 ${laneTag} [pollOperation] Response attempt ${i + 1}:`, {
+      console.log(`📡 [pollOperation] Response attempt ${i + 1}:`, {
         hasOp: !!op,
         status: op?.status,
         hasVideo: !!op?.video
       });
 
       if (!op) {
-        console.error(`❌ ${laneTag} [pollOperation] Invalid status payload - no operation in response`);
+        console.error(`❌ [pollOperation] Invalid status payload - no operation in response`);
         throw new Error("Invalid status payload");
       }
 
       // Check for SUCCESSFUL status
       if (op.status === "SUCCESSFUL" || op.status === "MEDIA_GENERATION_STATUS_SUCCESSFUL") {
-        console.log(`✅ ${laneTag} [pollOperation] SUCCESS! Completed after ${i + 1} attempts`);
+        console.log(`✅ [pollOperation] SUCCESS! Completed after ${i + 1} attempts`);
         return op;
       }
 
@@ -399,23 +382,23 @@ const VideoVeo3 = (() => {
 
         // Check if it's a HIGH_TRAFFIC error (can retry)
         if (errorMsg.includes('HIGH_TRAFFIC')) {
-          console.warn(`⚠️ ${laneTag} [pollOperation] HIGH_TRAFFIC error - will retry polling (attempt ${i + 1}/${maxTries})`);
+          console.warn(`⚠️ [pollOperation] HIGH_TRAFFIC error - will retry polling (attempt ${i + 1}/${maxTries})`);
           // Don't throw yet, continue polling - it might succeed on next attempt
-          console.log(`⏸️ ${laneTag} [pollOperation] Waiting ${intervalMs * 2}ms before retry...`);
+          console.log(`⏸️ [pollOperation] Waiting ${intervalMs * 2}ms before retry...`);
           await sleep(intervalMs * 2); // Double wait time for HIGH_TRAFFIC
           continue;
         }
 
         // For other errors, throw immediately
-        console.error(`❌ ${laneTag} [pollOperation] FAILED:`, op.error || op);
+        console.error(`❌ [pollOperation] FAILED:`, op.error || op);
         throw new Error(`Generation failed: ${errorMsg || JSON.stringify(op)}`);
       }
 
-      console.log(`⏸️ ${laneTag} [pollOperation] Status: ${op.status} - waiting ${intervalMs}ms before next poll...`);
+      console.log(`⏸️ [pollOperation] Status: ${op.status} - waiting ${intervalMs}ms before next poll...`);
       await sleep(intervalMs);
     }
 
-    console.error(`❌ ${laneTag} [pollOperation] TIMEOUT after ${maxTries} attempts`);
+    console.error(`❌ [pollOperation] TIMEOUT after ${maxTries} attempts`);
     throw new Error("Timeout polling status");
   }
 
