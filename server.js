@@ -1,0 +1,3560 @@
+// ################################################################
+// # UPDATED: 2025-11-10 - Veo3 Video Generation Integration
+// # - Added GET /api/veo3/get-session endpoint
+// # - Updated /api/veo3/set-project to accept both projectId & sceneId
+// # - Manual project/scene setup workflow (no auto-create)
+// ################################################################
+const express = require('express');
+const puppeteer = require('puppeteer');
+const axios = require('axios');
+const fs = require('fs').promises;
+const fsSync = require('fs');
+const { pipeline } = require('stream');
+const { promisify } = require('util');
+const { spawn } = require('child_process');
+const path = require('path');
+const cors = require('cors');
+const crypto = require('crypto');
+const XLSX = require('xlsx');
+
+const streamPipeline = promisify(pipeline);
+
+const app = express();
+app.use(cors());
+app.use(express.json({ limit: '50mb' }));
+app.use('/images', express.static('images'));
+app.use('/assets', express.static('assets'));
+app.use('/projects', express.static('projects'));
+app.use(express.static(__dirname));
+
+const IMAGE_DIR = path.join(__dirname, 'images');
+const ASSET_DIR = path.join(__dirname, 'assets');
+const PROJECT_DIR = path.join(__dirname, 'projects');
+const CHROME_PROFILES_BASE = path.join(__dirname, 'chrome-profiles');
+const CREDENTIALS_FILE = path.join(__dirname, 'credentials.json');
+const TOKENS_FILE = path.join(__dirname, 'tokens.txt');
+const TOKENS_XLSX_FILE = path.join(__dirname, 'tokens.xlsx');
+
+// Session state (backward compatible - points to current active profile)
+let session = {
+  accessToken: null,
+  cookies: null,
+  sessionToken: null,
+  workflowId: null,
+  sessionId: null,
+  lastUpdate: null,
+  page: null,
+  browser: null,
+  chromeReady: false,
+  currentProfile: 'default',  // Track which profile is active
+  currentProxy: null,         // Proxy string ip:port:user:pass cho profile hiện tại (nếu có)
+  currentAccountName: 'default' // Tên logic của account/profiel hiện tại (để log / rate-limit tracking)
+};
+
+// CRITICAL: Support multiple Chrome instances for multi-account
+// Each profile has its own browser, page, cookies, token
+let browsers = {
+  // 'default': { browser, page, chromeReady, cookies, sessionToken, accessToken }
+  // 'account1': { browser, page, chromeReady, cookies, sessionToken, accessToken }
+};
+
+// Saved profile names (persisted to profiles.txt)
+let savedProfiles = [];
+
+// CRITICAL: Token pool for multi-threaded generation
+// Load multiple tokens from tokens.txt and round-robin between them
+let tokenPool = [];
+let currentTokenIndex = 0;  // Round-robin counter
+
+// Get next token from pool (round-robin)
+function getNextToken() {
+  if (tokenPool.length === 0) {
+    // Fallback to global session if no pool
+    return {
+      cookies: session.cookies,
+      sessionToken: session.sessionToken,
+      accessToken: session.accessToken,
+      name: 'default'
+    };
+  }
+
+  const token = tokenPool[currentTokenIndex];
+  currentTokenIndex = (currentTokenIndex + 1) % tokenPool.length;
+  return token;
+}
+
+// Conversation history for context
+let conversationHistory = [];
+
+// Logs for debugging
+let serverLogs = [];
+const MAX_LOGS = 500;
+
+// Rate limiting stats
+let rateLimitStats = {
+  totalRequests: 0,
+  rateLimitedRequests: 0,
+  retriedRequests: 0,
+  failedAfterRetry: 0,
+  lastRateLimitTime: null,
+  tokenUsageByAccount: {}  // Track usage per token/account
+};
+
+const log = (msg, level = 'info') => {
+  const time = new Date().toTimeString().split(' ')[0];
+  const timestamp = Date.now();
+  console.log(`[${time}] ${msg}`);
+
+  // Add to server logs
+  serverLogs.push({
+    timestamp,
+    time,
+    level,
+    message: msg
+  });
+
+  // Keep only last MAX_LOGS entries
+  if (serverLogs.length > MAX_LOGS) {
+    serverLogs = serverLogs.slice(-MAX_LOGS);
+  }
+};
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+function generateWorkflowId() {
+  return crypto.randomUUID();
+}
+
+function generateSessionId() {
+  return `;${Date.now()}`;
+}
+
+// Helper function: Parse proxy string to axios proxy config
+// Format: ip:port:username:password (e.g., 61.52.195.100:41744:user:pass)
+function parseProxy(proxyString) {
+  if (!proxyString) return null;
+
+  const parts = proxyString.split(':');
+  if (parts.length < 2) {
+    log(`⚠️ Invalid proxy format: ${proxyString}`, 'warn');
+    return null;
+  }
+
+  const [host, port, username, password] = parts;
+
+  const proxyConfig = {
+    host: host,
+    port: parseInt(port)
+  };
+
+  // Add auth if username and password provided
+  if (username && password) {
+    proxyConfig.auth = {
+      username: username,
+      password: password
+    };
+  }
+
+  return proxyConfig;
+}
+
+// Helper function: Axios with 429 retry and exponential backoff
+// Usage example:
+//   const token = getNextToken();
+//   const response = await axiosWithRetry({
+//     method: 'POST',
+//     url: 'https://api.example.com/endpoint',
+//     data: { ... },
+//     headers: { ... }
+//   }, 0, 5, token.name, token.proxy);
+//
+// This will automatically retry on 429 errors with exponential backoff
+async function axiosWithRetry(config, retryCount = 0, maxRetries = 5, accountName = 'unknown', proxyString = null) {
+  // Track request
+  if (retryCount === 0) {
+    rateLimitStats.totalRequests++;
+  }
+
+  // Parse and add proxy to config if provided
+  if (proxyString) {
+    const proxyConfig = parseProxy(proxyString);
+    if (proxyConfig) {
+      config.proxy = proxyConfig;
+      if (retryCount === 0) {
+        log(`🌐 Using proxy for [${accountName}]: ${proxyConfig.host}:${proxyConfig.port}`);
+      }
+    }
+  }
+
+  try {
+    const response = await axios(config);
+    return response;
+  } catch (error) {
+    // Check if it's a 429 error
+    if (error.response && error.response.status === 429) {
+      // Track rate limit hit
+      if (retryCount === 0) {
+        rateLimitStats.rateLimitedRequests++;
+        rateLimitStats.lastRateLimitTime = Date.now();
+      }
+      rateLimitStats.retriedRequests++;
+
+      // Track by account
+      if (!rateLimitStats.tokenUsageByAccount[accountName]) {
+        rateLimitStats.tokenUsageByAccount[accountName] = {
+          requests: 0,
+          rateLimited: 0
+        };
+      }
+      rateLimitStats.tokenUsageByAccount[accountName].rateLimited++;
+
+      if (retryCount < maxRetries) {
+        // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 32s
+        const backoffMs = Math.min(1000 * Math.pow(2, retryCount), 32000);
+
+        // Check for Retry-After header
+        const retryAfter = error.response.headers['retry-after'];
+        const waitMs = retryAfter ? parseInt(retryAfter) * 1000 : backoffMs;
+
+        log(`⚠️ 429 Rate Limited [${accountName}] - Retrying in ${waitMs}ms (attempt ${retryCount + 1}/${maxRetries})`, 'warn');
+
+        // Wait before retry
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+
+        // Recursive retry (pass proxy along)
+        return axiosWithRetry(config, retryCount + 1, maxRetries, accountName, proxyString);
+      } else {
+        rateLimitStats.failedAfterRetry++;
+        log(`❌ 429 Rate Limit [${accountName}] - Failed after ${maxRetries} retries`, 'error');
+        throw new Error(`API rate limit exceeded after ${maxRetries} retries`);
+      }
+    }
+
+    // For other errors, throw immediately
+    throw error;
+  }
+}
+
+// ============================================
+// AUTHENTICATION
+// ============================================
+
+// CRITICAL: Refactored to support token parameter for multi-threading
+// If tokenObj provided, use it; otherwise use global session
+const getAccessToken = async (forceRefresh = false, tokenObj = null, options = {}) => {
+  // skipProxy kept for backward compatibility (currently unused)
+  const { skipProxy = false } = options;
+
+  // Use provided token or fallback to global session
+  const targetToken = tokenObj || {
+    cookies: session.cookies,
+    sessionToken: session.sessionToken,
+    accessToken: session.accessToken,
+    lastUpdate: session.lastUpdate
+  };
+
+  // Return cached token if still valid (less than 55 minutes old) and not forced refresh
+  if (!forceRefresh && targetToken.accessToken && targetToken.lastUpdate) {
+    const tokenAge = Date.now() - targetToken.lastUpdate;
+    const maxAge = 55 * 60 * 1000; // 55 minutes
+
+    if (tokenAge < maxAge) {
+      const tokenName = tokenObj ? `(${tokenObj.name})` : '';
+      log(`✓ Using cached access token ${tokenName} (age: ${Math.floor(tokenAge / 1000 / 60)}min)`);
+      return targetToken.accessToken;
+    }
+  }
+
+  const tokenName = tokenObj ? `for ${tokenObj.name}` : '';
+  log(`Getting access token ${tokenName}...`);
+
+  try {
+    if (!targetToken.cookies || !targetToken.sessionToken) {
+      if (tokenObj) {
+        throw new Error(`Token ${tokenObj.name} missing cookies or sessionToken`);
+      }
+      await extractCredentials();
+    }
+
+    // IMPORTANT: call auth/session directly without proxy/retry to match browser behaviour
+    const response = await axios.get('https://labs.google/fx/api/auth/session', {
+      headers: {
+        'Cookie': targetToken.cookies,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://labs.google/fx/tools/whisk/project',
+        'Accept': '*/*'
+      },
+      timeout: 30000
+    });
+
+    if (response.data && response.data.access_token) {
+      targetToken.accessToken = response.data.access_token;
+      targetToken.lastUpdate = Date.now();
+
+      // Sync back to global session if not using tokenObj
+      if (!tokenObj) {
+        session.accessToken = targetToken.accessToken;
+        session.lastUpdate = targetToken.lastUpdate;
+      }
+
+      log(`✓ Access token obtained ${tokenName}: ${targetToken.accessToken.substring(0, 30)}...`);
+      return targetToken.accessToken;
+    } else {
+      throw new Error('No access token in response');
+    }
+  } catch (error) {
+    log(`✗ Failed to get access token ${tokenName}: ${error.message}`, 'error');
+
+    // If 401, cookies/session token expired
+    if (error.response?.status === 401) {
+      log(`⚠️ Session expired ${tokenName}! Please re-login and capture token again`, 'error');
+      // Clear token
+      targetToken.accessToken = null;
+      if (!tokenObj) {
+        session.accessToken = null;
+      }
+    }
+
+    log(`Error details: ${error.stack}`, 'error');
+    throw error;
+  }
+};
+
+const extractCredentials = async () => {
+  log('Extracting credentials from Chrome...');
+
+  try {
+    // If we have a page from launchChrome(), use it
+    if (session.page) {
+      const cookies = await session.page.cookies();
+      const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+
+      // Extract session token
+      const sessionCookie = cookies.find(c => c.name === '__Secure-next-auth.session-token');
+      if (sessionCookie) {
+        session.sessionToken = sessionCookie.value;
+      }
+
+      session.cookies = cookieString;
+      log('✓ Credentials extracted successfully');
+      return true;
+    }
+
+    // Fallback: Try to connect to remote debugging port (legacy method)
+    const res = await axios.get('http://localhost:9222/json/version', { timeout: 5000 });
+    const wsEndpoint = res.data.webSocketDebuggerUrl;
+
+    const browser = await puppeteer.connect({
+      browserWSEndpoint: wsEndpoint,
+      defaultViewport: null
+    });
+
+    const pages = await browser.pages();
+    const page = pages.find(p => p.url().includes('labs.google'));
+
+    if (!page) {
+      throw new Error('Whisk page not found! Please launch Chrome using "Khởi động Chrome" button');
+    }
+
+    session.page = page;
+
+    const cookies = await page.cookies();
+    const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+
+    // Extract session token
+    const sessionCookie = cookies.find(c => c.name === '__Secure-next-auth.session-token');
+    if (sessionCookie) {
+      session.sessionToken = sessionCookie.value;
+    }
+
+    session.cookies = cookieString;
+    log('✓ Credentials extracted successfully');
+
+    return true;
+  } catch (error) {
+    log(`✗ Failed to extract credentials: ${error.message}`);
+    throw error;
+  }
+};
+
+// ============================================
+// WORKFLOW CREATION - BƯỚC QUAN TRỌNG!
+// ============================================
+
+const createOrUpdateWorkflow = async () => {
+  log('\n==== CREATE/UPDATE WORKFLOW ====');
+
+  try {
+    // Ensure we have credentials
+    if (!session.cookies) {
+      await extractCredentials();
+    }
+
+    // Generate new IDs if not exists
+    if (!session.workflowId || !session.sessionId) {
+      session.workflowId = generateWorkflowId();
+      session.sessionId = generateSessionId();
+    }
+
+    const workflowName = `Whisk Project: ${new Date().toLocaleDateString()}`;
+
+    const payload = {
+      json: {
+        clientContext: {
+          tool: 'BACKBONE',
+          sessionId: session.sessionId
+        },
+        mediaGenerationIdsToCopy: [],
+        workflowMetadata: {
+          workflowName: workflowName
+        }
+      }
+    };
+
+    log(`Creating workflow: ${workflowName}`);
+    log(`Session ID: ${session.sessionId}`);
+
+    const accountName = session.currentAccountName || 'default';
+    const proxyString = session.currentProxy || null;
+
+    const response = await axiosWithRetry({
+      method: 'POST',
+      url: 'https://labs.google/fx/api/trpc/media.createOrUpdateWorkflow',
+      data: payload,
+      headers: {
+        'Cookie': session.cookies,
+        'Content-Type': 'application/json',
+        'Origin': 'https://labs.google',
+        'Referer': 'https://labs.google/fx/tools/whisk/project',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 30000
+    }, 0, 3, accountName, proxyString);
+
+    log(`Workflow response status: ${response.status}`);
+
+    // Parse workflow ID từ response
+    if (response.data && response.data.result && response.data.result.data) {
+      const workflowId = response.data.result.data.json?.result?.workflowId;
+      if (workflowId) {
+        session.workflowId = workflowId;
+        log(`✓ Workflow created: ${session.workflowId}`);
+        return { success: true, workflowId: session.workflowId };
+      }
+    }
+
+    // Nếu không parse được, vẫn dùng UUID local
+    log(`⚠ Could not parse workflowId from response, using local: ${session.workflowId}`);
+    return { success: true, workflowId: session.workflowId };
+
+  } catch (error) {
+    log(`✗ Workflow creation failed: ${error.message}`, 'error');
+    if (error.response) {
+      log(`API Response: ${JSON.stringify(error.response.data)}`, 'error');
+    }
+    // Vẫn tiếp tục với UUID local
+    return { success: true, workflowId: session.workflowId };
+  }
+};
+
+// ============================================
+// IMAGE GENERATION
+// ============================================
+
+const generateImage = async (prompt, options = {}, token = null) => {
+  const tokenName = token ? token.name : (session.currentAccountName || 'default');
+  log(`\n==== GENERATE IMAGE (Token: ${tokenName}) ====`);
+  log(`Prompt: "${prompt}"`);
+
+  try {
+    // CRITICAL: Get access token from provided token or global session
+    let accessToken;
+    if (token) {
+      // Use token from pool
+      accessToken = await getAccessToken(false, token);
+    } else {
+      // Fallback to global session
+      if (!session.accessToken || Date.now() - session.lastUpdate > 30 * 60 * 1000) {
+        await getAccessToken();
+      }
+      accessToken = session.accessToken;
+    }
+
+    // BƯỚC QUAN TRỌNG: Tạo workflow qua API trước!
+    if (!session.workflowId || !session.sessionId) {
+      await createOrUpdateWorkflow();
+      log(`✓ Using workflow: ${session.workflowId}`);
+      log(`✓ Using session: ${session.sessionId}`);
+    }
+
+    const seed = options.seed || Math.floor(Math.random() * 1000000);
+    const aspectRatio = options.aspectRatio || 'IMAGE_ASPECT_RATIO_LANDSCAPE';
+
+    const payload = {
+      clientContext: {
+        workflowId: session.workflowId,
+        tool: 'BACKBONE',
+        sessionId: session.sessionId
+      },
+      imageModelSettings: {
+        imageModel: 'IMAGEN_3_5',
+        aspectRatio: aspectRatio
+      },
+      seed: seed,
+      prompt: prompt,
+      mediaCategory: 'MEDIA_CATEGORY_BOARD'
+    };
+
+    // Add originalMediaGenerationId if provided (for Continue feature)
+    if (options.originalMediaGenerationId) {
+      payload.originalMediaGenerationId = options.originalMediaGenerationId;
+      log(`✓ Using originalMediaGenerationId: ${options.originalMediaGenerationId.substring(0, 20)}...`);
+    }
+
+    log('Sending request to Whisk API...');
+
+    const proxyString = (token && token.proxy) || session.currentProxy || null;
+    const response = await axiosWithRetry({
+      method: 'POST',
+      url: 'https://aisandbox-pa.googleapis.com/v1/whisk:generateImage',
+      data: payload,
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'text/plain;charset=UTF-8',
+        'Origin': 'https://labs.google',
+        'Referer': 'https://labs.google/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 180000
+    }, 0, 5, tokenName, proxyString);
+
+    log(`Response status: ${response.status}`);
+
+    if (response.data) {
+      // Debug: Log response structure (not saving to file anymore)
+      log(`Response has ${response.data.imagePanels?.length || 0} image panels`);
+
+      // Extract base64 encoded image and generation ID
+      const result = extractImageFromResponse(response.data);
+
+      if (result.encodedImage) {
+        // Save base64 image directly
+        const localUrl = await saveImageFromBase64(result.encodedImage, `gen_${Date.now()}`);
+
+        if (localUrl) {
+          // Add to conversation history
+          conversationHistory.push({
+            type: 'generate',
+            prompt: prompt,
+            seed: seed,
+            generationId: result.generationId,
+            imageUrl: localUrl,
+            timestamp: Date.now()
+          });
+
+          log(`✓ Image generated successfully`);
+          return {
+            success: true,
+            imageUrl: localUrl,
+            generationId: result.generationId,
+            seed: seed
+          };
+        }
+      }
+    }
+
+    throw new Error('No encoded image in response');
+
+  } catch (error) {
+    log(`✗ Generation failed: ${error.message}`, 'error');
+    if (error.response) {
+      log(`API Response status: ${error.response.status}`, 'error');
+      log(`API Response data: ${JSON.stringify(error.response.data)}`, 'error');
+    }
+    log(`Error stack: ${error.stack}`, 'error');
+    return { success: false, error: error.message };
+  }
+};
+
+// ============================================
+// IMAGE EDITING (with reference)
+// ============================================
+
+const editImage = async (prompt, referenceImagePath, options = {}) => {
+  log(`\n==== EDIT IMAGE ====`);
+  log(`Prompt: "${prompt}"`);
+  log(`Reference: ${referenceImagePath}`);
+
+  try {
+    // Ensure we have access token
+    if (!session.accessToken || Date.now() - session.lastUpdate > 30 * 60 * 1000) {
+      await getAccessToken();
+    }
+
+    // Get reference image data
+    const imageBuffer = await fs.readFile(path.join(__dirname, referenceImagePath.replace(/^\//, '')));
+    const base64Image = imageBuffer.toString('base64');
+
+    // Get generation ID from options or find in conversation history
+    let originalGenerationId = options.generationId || null;
+
+    if (!originalGenerationId) {
+      // Fallback: find reference in conversation history
+      const reference = conversationHistory.find(h => h.imageUrl === referenceImagePath);
+      originalGenerationId = reference ? reference.generationId : null;
+
+      if (originalGenerationId) {
+        log(`✓ Found generationId from history: ${originalGenerationId.substring(0, 20)}...`);
+      } else {
+        log(`⚠ No generationId found for reference image`);
+      }
+    } else {
+      log(`✓ Using provided generationId: ${originalGenerationId.substring(0, 20)}...`);
+    }
+
+    const aspectRatio = options.aspectRatio || 'IMAGE_ASPECT_RATIO_LANDSCAPE';
+
+    // Build editInput object
+    const editInput = {
+      caption: prompt,
+      userInstruction: prompt,
+      originalMediaGenerationId: originalGenerationId,
+      mediaInput: {
+        mediaCategory: 'MEDIA_CATEGORY_BOARD',
+        rawBytes: base64Image
+      }
+    };
+
+    // Only include seed if provided (API doesn't accept null)
+    if (options.seed !== undefined && options.seed !== null) {
+      editInput.seed = options.seed;
+    }
+
+    // Set safetyMode to valid enum value (API doesn't accept null)
+    editInput.safetyMode = 'SAFETY_MODE_UNSPECIFIED';
+
+    const payload = {
+      json: {
+        clientContext: {
+          workflowId: session.workflowId,
+          tool: 'BACKBONE',
+          sessionId: session.sessionId
+        },
+        imageModelSettings: {
+          imageModel: 'GEM_PIX',
+          aspectRatio: aspectRatio
+        },
+        flags: {},
+        editInput: editInput
+      }
+    };
+
+    log('Sending edit request to Whisk API...');
+
+    const accountName = session.currentAccountName || 'default';
+    const proxyString = session.currentProxy || null;
+
+    const response = await axiosWithRetry({
+      method: 'POST',
+      url: 'https://labs.google/fx/api/trpc/backbone.editImage',
+      data: payload,
+      headers: {
+        'Cookie': session.cookies,
+        'Content-Type': 'application/json',
+        'Origin': 'https://labs.google',
+        'Referer': 'https://labs.google/fx/tools/whisk/project',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 180000
+    }, 0, 5, accountName, proxyString);
+
+    log(`Response status: ${response.status}`);
+
+    if (response.data) {
+      // Debug: Log response structure (not saving to file anymore)
+      log(`Edit response received successfully`);
+
+      // Extract base64 encoded image and generation ID
+      const result = extractImageFromResponse(response.data);
+
+      if (result.encodedImage) {
+        // Save base64 image directly
+        const localUrl = await saveImageFromBase64(result.encodedImage, `edit_${Date.now()}`);
+
+        if (localUrl) {
+          // Add to conversation history
+          conversationHistory.push({
+            type: 'edit',
+            prompt: prompt,
+            referenceImagePath: referenceImagePath,
+            generationId: result.generationId,
+            imageUrl: localUrl,
+            timestamp: Date.now()
+          });
+
+          log(`✓ Image edited successfully`);
+          return {
+            success: true,
+            imageUrl: localUrl,
+            generationId: result.generationId
+          };
+        }
+      }
+    }
+
+    throw new Error('No encoded image in response');
+
+  } catch (error) {
+    log(`✗ Edit failed: ${error.message}`, 'error');
+    if (error.response) {
+      log(`API Response status: ${error.response.status}`, 'error');
+      log(`API Response data: ${JSON.stringify(error.response.data)}`, 'error');
+    }
+    log(`Error stack: ${error.stack}`, 'error');
+    return { success: false, error: error.message };
+  }
+};
+
+// ============================================
+// IMAGE PROCESSING
+// ============================================
+
+function extractImageFromResponse(data) {
+  // Extract image and generation ID from response
+  // Response structure: { imagePanels: [{ generatedImages: [{ encodedImage: "base64..." }] }] }
+
+  let encodedImage = null;
+  let generationId = null;
+
+  try {
+    // Method 1: Parse structured response (generateImage API)
+    if (data.imagePanels && data.imagePanels.length > 0) {
+      const panel = data.imagePanels[0];
+      if (panel.generatedImages && panel.generatedImages.length > 0) {
+        encodedImage = panel.generatedImages[0].encodedImage;
+        log(`✓ Found encodedImage in imagePanels (length: ${encodedImage ? encodedImage.length : 0})`);
+      }
+    }
+
+    // Method 2: Parse from editImage response (có thể khác structure)
+    if (!encodedImage && data.result && data.result.data) {
+      const resultData = data.result.data;
+      if (resultData.json && resultData.json.result) {
+        const result = resultData.json.result;
+        if (result.imagePanels && result.imagePanels.length > 0) {
+          const panel = result.imagePanels[0];
+          if (panel.generatedImages && panel.generatedImages.length > 0) {
+            encodedImage = panel.generatedImages[0].encodedImage;
+            log(`✓ Found encodedImage in result.imagePanels (length: ${encodedImage ? encodedImage.length : 0})`);
+          }
+        }
+      }
+    }
+
+    // Extract generation ID from various places
+    const jsonStr = JSON.stringify(data);
+
+    // Try different patterns
+    const genIdMatch = jsonStr.match(/"mediaGenerationId":"([^"]+)"/);
+    if (genIdMatch) {
+      generationId = genIdMatch[1];
+    }
+
+    // Alternative pattern
+    if (!generationId) {
+      const altMatch = jsonStr.match(/"generationId":"([^"]+)"/);
+      if (altMatch) {
+        generationId = altMatch[1];
+      }
+    }
+
+    log(`Extracted encodedImage: ${encodedImage ? 'YES (' + encodedImage.length + ' chars)' : 'NOT FOUND'}`);
+    log(`Generation ID: ${generationId || 'NOT FOUND'}`);
+
+  } catch (error) {
+    log(`Error extracting from response: ${error.message}`);
+  }
+
+  return { encodedImage, generationId };
+}
+
+async function saveImageFromBase64(encodedImage, prefix = 'img') {
+  log(`Saving base64 encoded image...`);
+
+  try {
+    const filename = `${prefix}_${Date.now()}.jpg`;
+    const filepath = path.join(IMAGE_DIR, filename);
+
+    // Decode base64 to buffer
+    const imageBuffer = Buffer.from(encodedImage, 'base64');
+
+    await fs.writeFile(filepath, imageBuffer);
+    log(`✓ Image saved: ${filename} (${imageBuffer.length} bytes)`);
+
+    return `/images/${filename}`;
+
+  } catch (error) {
+    log(`✗ Save failed: ${error.message}`);
+    return null;
+  }
+}
+
+async function downloadImage(imageUrl, prefix = 'img') {
+  log(`Downloading image: ${imageUrl.substring(0, 80)}...`);
+
+  try {
+    const filename = `${prefix}_${Date.now()}.jpg`;
+    const filepath = path.join(IMAGE_DIR, filename);
+
+    // If it's a blob URL, we need to use Puppeteer to capture it
+    if (imageUrl.startsWith('blob:')) {
+      return await downloadBlobImage(imageUrl, filepath);
+    }
+
+    // Otherwise, download directly
+    const response = await axios.get(imageUrl, {
+      responseType: 'arraybuffer',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://labs.google/'
+      },
+      timeout: 60000
+    });
+
+    await fs.writeFile(filepath, response.data);
+    log(`✓ Image saved: ${filename}`);
+
+    return `/images/${filename}`;
+
+  } catch (error) {
+    log(`✗ Download failed: ${error.message}`);
+    return null;
+  }
+}
+
+async function downloadBlobImage(blobUrl, filepath) {
+  log('Downloading blob image via Puppeteer...');
+
+  try {
+    if (!session.page) {
+      throw new Error('No page reference');
+    }
+
+    // Use page.evaluate to fetch blob and convert to base64
+    const base64Data = await session.page.evaluate(async (url) => {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }, blobUrl);
+
+    const buffer = Buffer.from(base64Data, 'base64');
+    await fs.writeFile(filepath, buffer);
+
+    const filename = path.basename(filepath);
+    log(`✓ Blob image saved: ${filename}`);
+
+    return `/images/${filename}`;
+
+  } catch (error) {
+    log(`✗ Blob download failed: ${error.message}`);
+    return null;
+  }
+}
+
+// ============================================
+// INITIALIZE
+// ============================================
+
+(async () => {
+  log('Starting Whisk AI Server...');
+
+  await fs.mkdir(IMAGE_DIR, { recursive: true });
+  await fs.mkdir(ASSET_DIR, { recursive: true });
+  await fs.mkdir(PROJECT_DIR, { recursive: true });
+
+  log('✓ Server ready: http://localhost:3002\n');
+  log('📌 Next steps:');
+  log('   1. Open http://localhost:3002 in your browser');
+  log('   2. Click "🚀 Khởi động Chrome" button');
+  log('   3. Log in to Google if needed, then click "Bắt Token"\n');
+})();
+
+// ============================================
+// CHROME LAUNCHER
+// ============================================
+
+async function launchChrome(profileName = 'default') {
+  log(`🚀 Launching Chrome with Puppeteer... (Profile: ${profileName})`);
+
+  try {
+    // Check if this profile already has a browser running
+    if (browsers[profileName]) {
+      log(`⚠️  Profile "${profileName}" already has a Chrome instance running`);
+      // Don't close it - allow parallel instances!
+      // Instead, just return the existing instance info
+      return {
+        success: true,
+        message: `Chrome already running for profile "${profileName}"`,
+        alreadyRunning: true
+      };
+    }
+
+    // Use persistent profile directory to save login session
+    // This allows user to stay logged in across restarts
+    // CRITICAL: Each profile = different user account
+    const CHROME_PROFILE_DIR = path.join(CHROME_PROFILES_BASE, profileName);
+
+    // Create profiles base directory if not exists
+    await fs.mkdir(CHROME_PROFILE_DIR, { recursive: true });
+
+    log(`📁 Using persistent Chrome profile: ${profileName}`);
+
+    // Launch Chrome in headful mode with unique persistent profile
+    const browser = await puppeteer.launch({
+      headless: false,
+      defaultViewport: null,
+      userDataDir: CHROME_PROFILE_DIR,
+      args: [
+        '--start-maximized',
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-dev-shm-usage'
+      ]
+    });
+
+    // Store browser instance for this profile
+    browsers[profileName] = {
+      browser: browser,
+      page: null,  // Will be set below
+      chromeReady: false,
+      cookies: null,
+      sessionToken: null,
+      accessToken: null
+    };
+
+    log('✓ Chrome launched');
+
+    // Open new page
+    const page = await browser.newPage();
+    browsers[profileName].page = page;
+
+    // Navigate to Whisk
+    log('📍 Navigating to Whisk...');
+    await page.goto('https://labs.google/fx/tools/whisk/project', {
+      waitUntil: 'networkidle2',
+      timeout: 60000
+    });
+
+    log('✓ Page loaded');
+
+    // Wait a bit for any dynamic content
+    await page.waitForTimeout(3000);
+
+    // Try to extract credentials
+    log('🔑 Extracting credentials...');
+
+    const cookies = await page.cookies();
+    const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+
+    const sessionCookie = cookies.find(c => c.name === '__Secure-next-auth.session-token');
+    if (sessionCookie) {
+      browsers[profileName].sessionToken = sessionCookie.value;
+      browsers[profileName].cookies = cookieString;
+      log('✓ Session token found');
+    }
+
+    // Sync to global session (for backward compatibility)
+    session.currentProfile = profileName;
+    session.browser = browser;
+    session.page = page;
+    session.cookies = browsers[profileName].cookies;
+    session.sessionToken = browsers[profileName].sessionToken;
+
+    // Try to get access token
+    try {
+      await getAccessToken(false, null, { skipProxy: true });
+      browsers[profileName].chromeReady = true;
+      browsers[profileName].accessToken = session.accessToken;
+      session.chromeReady = true;
+
+      log(`✅ Chrome ready for profile "${profileName}"! You can now generate images.`);
+      return {
+        success: true,
+        message: `Chrome launched and ready (Profile: ${profileName})`,
+        profile: profileName
+      };
+    } catch (error) {
+      log('⚠ Could not get access token yet. Please log in to Google if needed.');
+      browsers[profileName].chromeReady = false;
+      session.chromeReady = false;
+      return {
+        success: true,
+        message: `Chrome launched for profile "${profileName}". Please log in to Google, then click "Bắt Token" button.`,
+        needsLogin: true,
+        profile: profileName
+      };
+    }
+
+  } catch (error) {
+    log(`✗ Failed to launch Chrome: ${error.message}`);
+    throw error;
+  }
+}
+
+async function captureToken() {
+  log('🔑 Capturing token from current page...');
+
+  try {
+    if (!session.page) {
+      throw new Error('No Chrome page available. Please launch Chrome first.');
+    }
+
+    // Extract credentials
+    const cookies = await session.page.cookies();
+    const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+
+    const sessionCookie = cookies.find(c => c.name === '__Secure-next-auth.session-token');
+    if (sessionCookie) {
+      session.sessionToken = sessionCookie.value;
+    }
+
+    session.cookies = cookieString;
+    log('✓ Credentials extracted');
+
+    // Get access token (không dùng proxy khi bắt token từ Chrome)
+    await getAccessToken(false, null, { skipProxy: true });
+    session.chromeReady = true;
+
+    log('✅ Token captured! System is ready.');
+    return { success: true, message: 'Token captured successfully' };
+
+  } catch (error) {
+    log(`✗ Failed to capture token: ${error.message}`);
+    throw error;
+  }
+}
+
+// ============================================
+// API ENDPOINTS
+// ============================================
+
+app.post('/api/launch-chrome', async (req, res) => {
+  try {
+    const { profile } = req.body;
+    const result = await launchChrome(profile);
+    res.json(result);
+  } catch (error) {
+    res.json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/capture-token', async (req, res) => {
+  try {
+    const result = await captureToken();
+    res.json(result);
+  } catch (error) {
+    res.json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/save-credentials', async (req, res) => {
+  try {
+    const { tokenName, proxy, projectId, sceneId, projectLink } = req.body;
+
+    if (!tokenName) {
+      return res.json({ success: false, error: 'Token name is required' });
+    }
+
+    if (!session.cookies || !session.sessionToken) {
+      return res.json({ success: false, error: 'No credentials to save. Please capture token first.' });
+    }
+
+    // Read existing tokens or create empty array
+    let tokens = [];
+    try {
+      const content = await fs.readFile(TOKENS_FILE, 'utf-8');
+      tokens = JSON.parse(content);
+      if (!Array.isArray(tokens)) {
+        tokens = [];
+      }
+    } catch (err) {
+      // File doesn't exist or invalid JSON, start fresh
+      log(`tokens.txt not found or invalid, creating new file`);
+      tokens = [];
+    }
+
+    // Remove existing token with same name if exists
+    tokens = tokens.filter(t => t.name !== tokenName);
+
+    // Add new token
+    const tokenData = {
+      name: tokenName,
+      sessionToken: session.sessionToken,
+      cookies: session.cookies,
+      savedAt: new Date().toISOString()
+    };
+
+    // Add proxy if provided
+    if (proxy) {
+      tokenData.proxy = proxy;
+      log(`✓ Token "${tokenName}" has proxy: ${proxy.split(':')[0]}:${proxy.split(':')[1]}`);
+    }
+
+    // Add projectId if provided
+    if (projectId) {
+      tokenData.projectId = projectId;
+      log(`✓ Token "${tokenName}" has projectId: ${projectId}`);
+    }
+
+    // Add sceneId if provided
+    if (sceneId) {
+      tokenData.sceneId = sceneId;
+      log(`✓ Token "${tokenName}" has sceneId: ${sceneId}`);
+    }
+
+    // Add original projectLink if provided (để auto-fill lại ô Project Link)
+    if (projectLink) {
+      tokenData.projectLink = projectLink;
+      log(`✓ Token "${tokenName}" has projectLink saved`);
+    }
+
+    tokens.push(tokenData);
+
+    // CRITICAL: Ensure parent directory exists and save to tokens.txt
+    const tokensDir = path.dirname(TOKENS_FILE);
+    await fs.mkdir(tokensDir, { recursive: true });
+
+    await fs.writeFile(TOKENS_FILE, JSON.stringify(tokens, null, 2), 'utf-8');
+
+    // Verify file was written
+    const verifyContent = await fs.readFile(TOKENS_FILE, 'utf-8');
+    const verifyTokens = JSON.parse(verifyContent);
+
+    log(`✓ Token "${tokenName}" saved to tokens.txt (${verifyTokens.length} total tokens)`);
+    log(`✓ File location: ${TOKENS_FILE}`);
+    res.json({
+      success: true,
+      message: `Token "${tokenName}" saved successfully`,
+      totalTokens: verifyTokens.length,
+      filePath: TOKENS_FILE
+    });
+  } catch (error) {
+    log(`✗ Failed to save token: ${error.message}`, 'error');
+    res.json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/load-credentials', async (req, res) => {
+  try {
+    const { tokenName } = req.body;
+
+    if (!tokenName) {
+      return res.json({ success: false, error: 'Token name is required' });
+    }
+
+    // Load from tokens.txt
+    const content = await fs.readFile(TOKENS_FILE, 'utf-8');
+    const tokens = JSON.parse(content);
+
+    // Find token by name
+    const token = tokens.find(t => t.name === tokenName);
+
+    if (!token) {
+      return res.json({
+        success: false,
+        error: `Token \"${tokenName}\" not found in tokens.txt`
+      });
+    }
+
+    session.cookies = token.cookies;
+    session.sessionToken = token.sessionToken;
+    session.currentProxy = token.proxy || null;
+    session.currentAccountName = token.name || 'default';
+
+    log(`✓ Token \"${tokenName}\" loaded from tokens.txt`);
+    log(`   Saved at: ${token.savedAt}`);
+    if (token.projectId) {
+      log(`   Project ID: ${token.projectId}`);
+    }
+    if (token.sceneId) {
+      log(`   Scene ID: ${token.sceneId}`);
+    }
+
+    // Try to get access token
+    try {
+      await getAccessToken();
+      session.chromeReady = true;
+      log('✅ Access token obtained! System is ready.');
+      res.json({
+        success: true,
+        message: `Token \"${tokenName}\" loaded successfully`,
+        savedAt: token.savedAt,
+        projectId: token.projectId || null,
+        sceneId: token.sceneId || null,
+        projectLink: token.projectLink || null,
+        proxy: token.proxy || null
+      });
+    } catch (error) {
+      log('⚠ Could not get access token. Credentials may be expired.');
+      res.json({
+        success: false,
+        error: 'Token expired. Please launch Chrome and capture token again.',
+        needsRecapture: true
+      });
+    }
+  } catch (error) {
+    log(`✗ Failed to load token: ${error.message}`, 'error');
+    res.json({
+      success: false,
+      error: `Token "${req.body.tokenName}" not found.`
+    });
+  }
+});
+
+app.get('/api/list-tokens', async (req, res) => {
+  try {
+    // Read tokens.txt
+    const content = await fs.readFile(TOKENS_FILE, 'utf-8');
+    const tokens = JSON.parse(content);
+
+    // Return full token info (name + proxy status)
+    const tokenList = tokens.map(t => ({
+      name: t.name,
+      hasProxy: !!t.proxy,
+      proxy: t.proxy ? `${t.proxy.split(':')[0]}:${t.proxy.split(':')[1]}` : null,
+      savedAt: t.savedAt
+    }));
+
+    log(`✓ Found ${tokenList.length} saved tokens in tokens.txt`);
+    res.json({
+      success: true,
+      tokens: tokenList
+    });
+  } catch (error) {
+    // File doesn't exist or invalid JSON
+    log(`ℹ No tokens file found or empty`);
+    res.json({
+      success: true,
+      tokens: []
+    });
+  }
+});
+
+// Export tokens.txt -> CSV để mở bằng Excel
+app.get('/api/tokens/export-csv', async (req, res) => {
+  try {
+    const content = await fs.readFile(TOKENS_FILE, 'utf-8');
+    const tokens = JSON.parse(content);
+
+    const headers = ['name', 'proxy', 'projectId', 'sceneId', 'projectLink', 'savedAt'];
+
+    const escapeCsv = (value) => {
+      if (value === undefined || value === null) return '""';
+      let s = String(value);
+      if (s.includes('"')) s = s.replace(/"/g, '""');
+      return '"' + s + '"';
+    };
+
+    const rows = [];
+    rows.push(headers.join(','));
+
+    for (const t of tokens) {
+      const row = [
+        escapeCsv(t.name),
+        escapeCsv(t.proxy || ''),
+        escapeCsv(t.projectId || ''),
+        escapeCsv(t.sceneId || ''),
+        escapeCsv(t.projectLink || ''),
+        escapeCsv(t.savedAt || '')
+      ].join(',');
+      rows.push(row);
+    }
+
+    const csv = rows.join('\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="tokens.csv"');
+    res.send(csv);
+  } catch (error) {
+    log(`✗ Failed to export tokens CSV: ${error.message}`, 'error');
+    res.status(500).send('Failed to export CSV: ' + error.message);
+  }
+});
+
+// Export tokens.txt -> XLSX (Excel)
+app.get('/api/tokens/export-xlsx', async (req, res) => {
+  try {
+    let tokens = [];
+    try {
+      const content = await fs.readFile(TOKENS_FILE, 'utf-8');
+      tokens = JSON.parse(content);
+      if (!Array.isArray(tokens)) tokens = [];
+    } catch (err) {
+      tokens = [];
+    }
+
+    // Chuẩn hoá dữ liệu cho Excel
+    const rows = tokens.map(t => ({
+      name: t.name || '',
+      sessionToken: t.sessionToken || '',
+      cookies: t.cookies || '',
+      proxy: t.proxy || '',
+      projectId: t.projectId || '',
+      sceneId: t.sceneId || '',
+      projectLink: t.projectLink || '',
+      savedAt: t.savedAt || ''
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows.length ? rows : [{ name: '', sessionToken: '', cookies: '', proxy: '', projectId: '', sceneId: '', projectLink: '', savedAt: '' }]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Tokens');
+
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="tokens.xlsx"');
+    res.send(buffer);
+  } catch (error) {
+    log(`✗ Failed to export tokens XLSX: ${error.message}`, 'error');
+    res.status(500).send('Failed to export XLSX: ' + error.message);
+  }
+});
+
+// Reload tokens từ file tokens.xlsx (Excel) -> ghi lại vào tokens.txt
+app.post('/api/tokens/reload-xlsx', async (req, res) => {
+  try {
+    // Nếu chưa có file Excel thì báo lỗi gợi ý export trước
+    if (!fsSync.existsSync(TOKENS_XLSX_FILE)) {
+      return res.json({
+        success: false,
+        error: 'Chưa có file tokens.xlsx. Hãy dùng /api/tokens/export-xlsx (hoặc nút Export Excel) rồi chỉnh sửa và lưu lại.'
+      });
+    }
+
+    const workbook = XLSX.readFile(TOKENS_XLSX_FILE);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+    const tokens = [];
+
+    for (const row of rows) {
+      const name = String(row.name || row.Name || '').trim();
+      if (!name) continue; // Bỏ qua dòng trống
+
+      const token = {
+        name,
+        sessionToken: String(row.sessionToken || row.SessionToken || '').trim() || undefined,
+        cookies: String(row.cookies || row.Cookies || '').trim() || undefined,
+        proxy: String(row.proxy || row.Proxy || '').trim() || undefined,
+        projectId: String(row.projectId || row.ProjectId || '').trim() || undefined,
+        sceneId: String(row.sceneId || row.SceneId || '').trim() || undefined,
+        projectLink: String(row.projectLink || row.ProjectLink || '').trim() || undefined,
+        savedAt: row.savedAt || row.SavedAt || new Date().toISOString()
+      };
+
+      // Xoá field undefined để file JSON gọn hơn
+      Object.keys(token).forEach(k => {
+        if (token[k] === undefined || token[k] === '') delete token[k];
+      });
+
+      tokens.push(token);
+    }
+
+    await fs.writeFile(TOKENS_FILE, JSON.stringify(tokens, null, 2), 'utf-8');
+    log(`✅ Reload ${tokens.length} token từ tokens.xlsx -> tokens.txt`);
+
+    res.json({
+      success: true,
+      message: `Đã reload ${tokens.length} token từ Excel`,
+      totalTokens: tokens.length
+    });
+  } catch (error) {
+    log(`✗ Failed to reload tokens from XLSX: ${error.message}`, 'error');
+    res.json({ success: false, error: error.message });
+  }
+});
+
+// CRITICAL: Load multiple tokens into pool for multi-threaded generation
+app.post('/api/load-token-pool', async (req, res) => {
+  try {
+    const { tokenNames } = req.body;  // Array of token names
+
+    if (!tokenNames || !Array.isArray(tokenNames) || tokenNames.length === 0) {
+      return res.json({ success: false, error: 'Token names array is required' });
+    }
+
+    // Read all tokens from file
+    const content = await fs.readFile(TOKENS_FILE, 'utf-8');
+    const allTokens = JSON.parse(content);
+
+    // Filter tokens by requested names
+    tokenPool = [];
+    for (const tokenName of tokenNames) {
+      const token = allTokens.find(t => t.name === tokenName);
+      if (token) {
+        // Add to pool with structure needed for getAccessToken
+        const poolToken = {
+          name: token.name,
+          cookies: token.cookies,
+          sessionToken: token.sessionToken,
+          accessToken: null,  // Will be fetched on first use
+          lastUpdate: null
+        };
+
+        // Copy thêm thông tin project/scene để dùng cho Veo3 nếu cần
+        if (token.projectId) {
+          poolToken.projectId = token.projectId;
+        }
+        if (token.sceneId) {
+          poolToken.sceneId = token.sceneId;
+        }
+
+        // Debug: hash một phần cookies/session để check acc có khác nhau không
+        try {
+          const cookieHash = token.cookies
+            ? crypto.createHash('sha256').update(token.cookies).digest('hex').slice(0, 10)
+            : 'no-cookie';
+          const sessionHash = token.sessionToken
+            ? crypto.createHash('sha256').update(token.sessionToken).digest('hex').slice(0, 10)
+            : 'no-session';
+          log(`🔐 Token "${tokenName}": cookieHash=${cookieHash}, sessionHash=${sessionHash}`);
+        } catch (hashErr) {
+          log(`⚠️ Failed to hash cookies for token "${tokenName}": ${hashErr.message}`, 'warning');
+        }
+
+        // Add proxy if available
+        if (token.proxy) {
+          poolToken.proxy = token.proxy;
+          log(`✓ Loaded token "${tokenName}" into pool (with proxy: ${token.proxy.split(':')[0]}:${token.proxy.split(':')[1]})`);
+        } else {
+          log(`✓ Loaded token "${tokenName}" into pool (no proxy)`);
+        }
+
+        tokenPool.push(poolToken);
+      } else {
+        log(`⚠️ Token "${tokenName}" not found in tokens.txt`, 'warning');
+      }
+    }
+
+    // Reset round-robin counter
+    currentTokenIndex = 0;
+
+    log(`✅ Token pool initialized with ${tokenPool.length} tokens`);
+    res.json({
+      success: true,
+      message: `Loaded ${tokenPool.length} tokens into pool`,
+      tokens: tokenPool.map(t => t.name)
+    });
+  } catch (error) {
+    log(`✗ Failed to load token pool: ${error.message}`, 'error');
+    res.json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/token-pool-status', (req, res) => {
+  res.json({
+    success: true,
+    poolSize: tokenPool.length,
+    tokens: tokenPool.map(t => t.name),
+    currentIndex: currentTokenIndex
+  });
+});
+
+// Profile management endpoints (similar to token management)
+const PROFILES_FILE = path.join(__dirname, 'profiles.txt');
+
+app.post('/api/save-profile', async (req, res) => {
+  try {
+    const { profileName } = req.body;
+
+    if (!profileName) {
+      return res.json({ success: false, error: 'Profile name is required' });
+    }
+
+    // Read existing profiles or create empty array
+    let profiles = [];
+    try {
+      const content = await fs.readFile(PROFILES_FILE, 'utf-8');
+      profiles = JSON.parse(content);
+      if (!Array.isArray(profiles)) {
+        profiles = [];
+      }
+    } catch (err) {
+      profiles = [];
+    }
+
+    // Add new profile if not exists
+    if (!profiles.includes(profileName)) {
+      profiles.push(profileName);
+    }
+
+    // Save to profiles.txt
+    await fs.writeFile(PROFILES_FILE, JSON.stringify(profiles, null, 2), 'utf-8');
+
+    log(`✓ Profile "${profileName}" saved to profiles.txt (${profiles.length} total profiles)`);
+    res.json({
+      success: true,
+      message: `Profile "${profileName}" saved successfully`,
+      totalProfiles: profiles.length
+    });
+  } catch (error) {
+    log(`✗ Failed to save profile: ${error.message}`, 'error');
+    res.json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/list-profiles', async (req, res) => {
+  try {
+    // Read profiles.txt
+    const content = await fs.readFile(PROFILES_FILE, 'utf-8');
+    const profiles = JSON.parse(content);
+
+    log(`✓ Found ${profiles.length} saved profiles in profiles.txt`);
+    res.json({
+      success: true,
+      profiles: profiles
+    });
+  } catch (error) {
+    // File doesn't exist or invalid JSON - return default
+    log(`ℹ No profiles file found, returning default`);
+    res.json({
+      success: true,
+      profiles: ['default']  // Always have default profile
+    });
+  }
+});
+
+app.get('/api/list-active-browsers', (req, res) => {
+  const activeProfiles = Object.keys(browsers);
+  log(`ℹ Currently ${activeProfiles.length} active browser(s): ${activeProfiles.join(', ') || 'none'}`);
+  res.json({
+    success: true,
+    profiles: activeProfiles
+  });
+});
+
+app.post('/api/open-url', async (req, res) => {
+  try {
+    const { url } = req.body;
+
+    if (!url) {
+      return res.json({ success: false, error: 'No URL provided' });
+    }
+
+    if (!session.page) {
+      return res.json({ success: false, error: 'Chrome not launched. Please launch Chrome first.' });
+    }
+
+    log(`Opening URL in Chrome: ${url}`);
+
+    // Open URL in new tab in the same browser
+    const newPage = await session.browser.newPage();
+    await newPage.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+
+    log(`✓ URL opened successfully in Chrome`);
+    res.json({ success: true, message: 'URL opened in Chrome' });
+  } catch (error) {
+    log(`✗ Failed to open URL: ${error.message}`, 'error');
+    res.json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/open-flow-tab', async (req, res) => {
+  try {
+    if (!session.browser) {
+      return res.json({ success: false, error: 'Chrome not launched' });
+    }
+
+    log('Opening Flow tab for video generation...');
+
+    // Open Flow tab
+    const flowPage = await session.browser.newPage();
+    await flowPage.goto('https://labs.google/fx/tools/flow', {
+      waitUntil: 'networkidle2',
+      timeout: 30000
+    });
+
+    log('✓ Flow tab opened');
+    res.json({ success: true, message: 'Flow tab opened' });
+  } catch (error) {
+    log(`✗ Failed to open Flow tab: ${error.message}`, 'error');
+    res.json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/chrome-status', async (req, res) => {
+  res.json({
+    success: true,
+    chromeReady: session.chromeReady,
+    hasPage: !!session.page,
+    hasBrowser: !!session.browser,
+    hasToken: !!session.accessToken
+  });
+});
+
+app.post('/api/generate', async (req, res) => {
+  const { prompt, aspectRatio, seed, originalMediaGenerationId } = req.body;
+
+  if (!prompt) {
+    return res.json({ success: false, error: 'Prompt is required' });
+  }
+
+  // CRITICAL: Use token from pool if available (round-robin)
+  const token = getNextToken();
+  const tokenName = token.name || 'default';
+  log(`🎨 Generating image with token: ${tokenName}`);
+
+  const result = await generateImage(prompt, { aspectRatio, seed, originalMediaGenerationId }, token);
+  res.json(result);
+});
+
+app.post('/api/edit', async (req, res) => {
+  const { prompt, captionPrompt, referenceImage, aspectRatio, generationId, seed } = req.body;
+
+  if (!prompt || !referenceImage) {
+    return res.json({ success: false, error: 'Prompt and reference image are required' });
+  }
+
+  // CRITICAL: captionPrompt is the prompt of the PREVIOUS image (reference)
+  // prompt is the CURRENT prompt (userInstruction)
+  const caption = captionPrompt || prompt;  // Use captionPrompt if provided, otherwise fallback to prompt
+  const userInstruction = prompt;
+
+  // referenceImage can be either a file path or base64 string
+  // If it's base64, we need to handle it differently
+  try {
+    let base64Image;
+
+    // Check if referenceImage is already base64 (no file path)
+    if (referenceImage.length > 1000 && !referenceImage.includes('/')) {
+      // It's base64 from web interface
+      base64Image = referenceImage;
+      log('Using base64 reference image from web interface');
+    } else {
+      // It's a file path - read it
+      // Handle both absolute paths and URL paths like /images/gen_xxx.jpg
+      let filePath;
+      if (referenceImage.startsWith('/images/')) {
+        // URL path from web interface - map to local images folder
+        filePath = path.join(__dirname, referenceImage.replace(/^\//, ''));
+      } else {
+        // Regular file path
+        filePath = path.join(__dirname, referenceImage.replace(/^\//, ''));
+      }
+
+      log(`Reading reference image from: ${filePath}`);
+
+      try {
+        const imageBuffer = await fs.readFile(filePath);
+        base64Image = imageBuffer.toString('base64');
+        log(`✓ Successfully read reference image (${imageBuffer.length} bytes)`);
+      } catch (readError) {
+        log(`✗ Failed to read image file: ${readError.message}`, 'error');
+        throw new Error(`Cannot read reference image: ${readError.message}`);
+      }
+    }
+
+    // Ensure we have access token
+    if (!session.accessToken || Date.now() - session.lastUpdate > 30 * 60 * 1000) {
+      await getAccessToken();
+    }
+
+    const resolvedAspectRatio = aspectRatio || 'IMAGE_ASPECT_RATIO_LANDSCAPE';
+
+    // CRITICAL: Add data:image/jpeg;base64, prefix to rawBytes
+    const rawBytesWithPrefix = `data:image/jpeg;base64,${base64Image}`;
+
+    // Build editInput object
+    // CRITICAL: For editImage API:
+    // - caption: prompt of PREVIOUS image (reference)
+    // - userInstruction: CURRENT prompt (new instruction)
+    // - seed: null (not used in edit mode)
+    const editInput = {
+      caption: caption,  // Prompt of previous image
+      userInstruction: userInstruction,  // Current prompt
+      originalMediaGenerationId: generationId || null,
+      seed: null,  // CRITICAL: Always null for editImage
+      safetyMode: null,  // CRITICAL: Must be null, not SAFETY_MODE_UNSPECIFIED
+      mediaInput: {
+        mediaCategory: 'MEDIA_CATEGORY_BOARD',
+        rawBytes: rawBytesWithPrefix  // CRITICAL: Must include data:image/jpeg;base64, prefix
+      }
+    };
+
+    const payload = {
+      json: {
+        clientContext: {
+          workflowId: session.workflowId,
+          tool: 'BACKBONE',
+          sessionId: session.sessionId
+        },
+        imageModelSettings: {
+          imageModel: 'GEM_PIX',  // Use GEM_PIX for editImage
+          aspectRatio: resolvedAspectRatio
+        },
+        flags: {},
+        editInput: editInput
+      },
+      meta: {
+        values: {
+          'editInput.seed': ['undefined'],
+          'editInput.safetyMode': ['undefined']
+        }
+      }
+    };
+
+    log('Sending edit request to Whisk API...');
+    log(`📝 Caption (prev prompt): "${caption.substring(0, 60)}..."`);
+    log(`📝 UserInstruction (current prompt): "${userInstruction.substring(0, 60)}..."`);
+    log(`Request payload: ${JSON.stringify(payload.json.editInput, null, 2).substring(0, 500)}...`);
+
+    const response = await axios.post(
+      'https://labs.google/fx/api/trpc/backbone.editImage',
+      payload,
+      {
+        headers: {
+          'Cookie': session.cookies,
+          'Content-Type': 'application/json',
+          'Origin': 'https://labs.google',
+          'Referer': 'https://labs.google/fx/tools/whisk/project',
+          'User-Agent': 'Mozilla/5.0'
+        }
+      }
+    );
+
+    // CRITICAL: Response structure is completely different!
+    // It's nested: result.data.json.result.imagePanels[0].generatedImages[0]
+    const apiResult = response.data?.result?.data?.json?.result;
+
+    if (!apiResult || !apiResult.imagePanels || !apiResult.imagePanels[0]) {
+      log(`✗ Invalid API response structure: ${JSON.stringify(response.data)}`);
+      throw new Error('Invalid API response');
+    }
+
+    const imagePanel = apiResult.imagePanels[0];
+    const generatedImage = imagePanel.generatedImages?.[0];
+
+    if (!generatedImage || !generatedImage.encodedImage) {
+      log(`✗ No generated image in response`);
+      throw new Error('No generated image in response');
+    }
+
+    log(`✓ Image edited successfully! MediaID: ${generatedImage.mediaGenerationId}`);
+
+    // Save base64 image locally (encodedImage is already base64 without prefix)
+    const localUrl = await saveImageFromBase64(generatedImage.encodedImage, `gen_${Date.now()}`);
+
+    if (!localUrl) {
+      throw new Error('Failed to save edited image locally');
+    }
+
+    const generationIdResult = generatedImage.mediaGenerationId;
+
+    // Add to conversation history
+    conversationHistory.push({
+      prompt,
+      imageUrl: localUrl,
+      generationId: generationIdResult,
+      timestamp: Date.now(),
+      isEdit: true
+    });
+
+    log(`✓ Edited image saved locally: ${localUrl}`);
+
+    res.json({
+      success: true,
+      imageUrl: localUrl,
+      generationId: generationIdResult
+    });
+
+  } catch (error) {
+    log(`✗ Edit failed: ${error.message}`);
+    res.json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/api/session', async (req, res) => {
+  try {
+    await getAccessToken();
+    res.json({
+      success: true,
+      hasToken: !!session.accessToken,
+      workflowId: session.workflowId,
+      sessionId: session.sessionId,
+      conversationLength: conversationHistory.length
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.get('/api/history', async (req, res) => {
+  res.json({
+    success: true,
+    history: conversationHistory
+  });
+});
+
+app.post('/api/reset', async (req, res) => {
+  session.workflowId = generateWorkflowId();
+  session.sessionId = generateSessionId();
+  conversationHistory = [];
+
+  log('✓ Session reset');
+
+  res.json({
+    success: true,
+    message: 'Session reset successfully',
+    workflowId: session.workflowId
+  });
+});
+
+app.post('/api/save-asset', async (req, res) => {
+  try {
+    const { name, imageUrl } = req.body;
+    const sourcePath = path.join(__dirname, imageUrl.replace(/^\//, ''));
+    const filename = `asset_${Date.now()}_${name.replace(/[^a-z0-9]/gi, '_')}.jpg`;
+    const destPath = path.join(ASSET_DIR, filename);
+    await fs.copyFile(sourcePath, destPath);
+    res.json({ success: true, asset: { name, url: `/assets/${filename}` }});
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/save-project', async (req, res) => {
+  try {
+    const { name, data } = req.body;
+    const filename = `${name.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.json`;
+    await fs.writeFile(path.join(PROJECT_DIR, filename), JSON.stringify(data, null, 2));
+    res.json({ success: true, filename });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/projects', async (req, res) => {
+  try {
+    const files = await fs.readdir(PROJECT_DIR);
+    res.json({ success: true, projects: files.filter(f => f.endsWith('.json')) });
+  } catch (err) {
+    res.json({ success: false, projects: [] });
+  }
+});
+
+app.get('/api/project/:filename', async (req, res) => {
+  try {
+    const data = await fs.readFile(path.join(PROJECT_DIR, req.params.filename), 'utf-8');
+    res.json({ success: true, data: JSON.parse(data) });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/logs', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 100;
+    const since = parseInt(req.query.since) || 0;
+
+    // Filter logs since timestamp
+    let filtered = serverLogs.filter(log => log.timestamp > since);
+
+    // Return latest logs
+    const logs = filtered.slice(-limit);
+
+    res.json({
+      success: true,
+      logs: logs,
+      count: logs.length,
+      totalCount: serverLogs.length
+    });
+  } catch (err) {
+    res.json({ success: false, error: err.message, logs: [] });
+  }
+});
+
+// Get rate limiting statistics
+app.get('/api/rate-limit-stats', async (req, res) => {
+  try {
+    const stats = {
+      ...rateLimitStats,
+      rateLimitPercentage: rateLimitStats.totalRequests > 0
+        ? ((rateLimitStats.rateLimitedRequests / rateLimitStats.totalRequests) * 100).toFixed(2) + '%'
+        : '0%',
+      retrySuccessRate: rateLimitStats.retriedRequests > 0
+        ? (((rateLimitStats.retriedRequests - rateLimitStats.failedAfterRetry) / rateLimitStats.retriedRequests) * 100).toFixed(2) + '%'
+        : 'N/A',
+      timeSinceLastRateLimit: rateLimitStats.lastRateLimitTime
+        ? `${Math.floor((Date.now() - rateLimitStats.lastRateLimitTime) / 1000)}s ago`
+        : 'Never',
+      tokenPoolSize: tokenPool.length,
+      currentTokenIndex: currentTokenIndex
+    };
+
+    res.json({
+      success: true,
+      stats: stats
+    });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Reset rate limiting statistics
+app.post('/api/reset-rate-limit-stats', async (req, res) => {
+  try {
+    rateLimitStats = {
+      totalRequests: 0,
+      rateLimitedRequests: 0,
+      retriedRequests: 0,
+      failedAfterRetry: 0,
+      lastRateLimitTime: null,
+      tokenUsageByAccount: {}
+    };
+
+    log('✓ Rate limit stats reset');
+
+    res.json({
+      success: true,
+      message: 'Rate limit statistics reset successfully'
+    });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Test proxy connection
+app.post('/api/test-proxy', async (req, res) => {
+  try {
+    const { proxy, tokenName } = req.body;
+
+    let proxyToTest = proxy;
+
+    // If no proxy provided, try to get from token
+    if (!proxyToTest && tokenName) {
+      try {
+        const content = await fs.readFile(TOKENS_FILE, 'utf-8');
+        const tokens = JSON.parse(content);
+        const token = tokens.find(t => t.name === tokenName);
+        if (token && token.proxy) {
+          proxyToTest = token.proxy;
+          log(`🔍 Using proxy from token "${tokenName}"`);
+        }
+      } catch (err) {
+        // Ignore error, will check proxyToTest below
+      }
+    }
+
+    if (!proxyToTest) {
+      return res.json({ success: false, error: 'No proxy to test. Please provide proxy or select a token with proxy.' });
+    }
+
+    log(`🔍 Testing proxy: ${proxyToTest.split(':')[0]}:${proxyToTest.split(':')[1]}`);
+
+    const proxyConfig = parseProxy(proxyToTest);
+    if (!proxyConfig) {
+      return res.json({ success: false, error: 'Invalid proxy format' });
+    }
+
+    // Test proxy by calling HTTP API (better compatibility with HTTP proxies)
+    const startTime = Date.now();
+
+    try {
+      // Use HTTP instead of HTTPS for better proxy compatibility
+      const response = await axios.get('http://ip-api.com/json/', {
+        proxy: proxyConfig,
+        timeout: 10000  // 10 second timeout
+      });
+
+      const responseTime = Date.now() - startTime;
+
+      log(`✅ Proxy test successful - IP: ${response.data.query}, Country: ${response.data.country}`);
+
+      res.json({
+        success: true,
+        ip: response.data.query,
+        country: response.data.country,
+        city: response.data.city,
+        region: response.data.regionName,
+        org: response.data.org || response.data.isp,
+        responseTime: responseTime
+      });
+    } catch (proxyError) {
+      log(`❌ Proxy test failed: ${proxyError.message}`, 'error');
+
+      res.json({
+        success: false,
+        error: `Proxy connection failed: ${proxyError.message}`
+      });
+    }
+  } catch (err) {
+    log(`❌ Test proxy error: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Edit proxy and projectId for existing token
+app.post('/api/edit-proxy', async (req, res) => {
+  try {
+    const { tokenName, proxy, projectId } = req.body;
+
+    if (!tokenName) {
+      return res.json({ success: false, error: 'Token name is required' });
+    }
+
+    // Read tokens from file
+    const content = await fs.readFile(TOKENS_FILE, 'utf-8');
+    let tokens = JSON.parse(content);
+
+    // Find token
+    const tokenIndex = tokens.findIndex(t => t.name === tokenName);
+
+    if (tokenIndex === -1) {
+      return res.json({ success: false, error: `Token "${tokenName}" not found` });
+    }
+
+    const updates = [];
+
+    // Update proxy
+    if (proxy) {
+      tokens[tokenIndex].proxy = proxy;
+      updates.push(`Proxy: ${proxy.split(':')[0]}:${proxy.split(':')[1]}`);
+      log(`✅ Proxy updated for token "${tokenName}": ${proxy.split(':')[0]}:${proxy.split(':')[1]}`);
+    } else if (proxy === null && tokens[tokenIndex].proxy) {
+      delete tokens[tokenIndex].proxy;
+      updates.push('Proxy removed');
+      log(`✅ Proxy removed from token "${tokenName}"`);
+    }
+
+    // Update projectId
+    if (projectId) {
+      tokens[tokenIndex].projectId = projectId;
+      updates.push(`Project: ${projectId}`);
+      log(`✅ ProjectId updated for token "${tokenName}": ${projectId}`);
+    } else if (projectId === null && tokens[tokenIndex].projectId) {
+      delete tokens[tokenIndex].projectId;
+      updates.push('ProjectId removed');
+      log(`✅ ProjectId removed from token "${tokenName}"`);
+    }
+
+    tokens[tokenIndex].lastUpdate = new Date().toISOString();
+
+    // Save back to file
+    await fs.writeFile(TOKENS_FILE, JSON.stringify(tokens, null, 2), 'utf-8');
+
+    res.json({
+      success: true,
+      message: updates.length > 0 ? updates.join(', ') : 'No changes made'
+    });
+  } catch (err) {
+    log(`❌ Edit config error: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/logs/clear', async (req, res) => {
+  try {
+    serverLogs = [];
+    log('Logs cleared by user');
+    res.json({ success: true, message: 'Logs cleared' });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// ============================================
+// VEO3 VIDEO GENERATION ENDPOINTS
+// ============================================
+
+// Helper: generate crypto random ID
+function cryptoRandomId() {
+  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+}
+
+// Helper: submit batch log - ĐÚNG CẤU TRÚC API
+async function submitBatchLog(token, eventName, mode, queryId, aspectRatio = 'VIDEO_ASPECT_RATIO_LANDSCAPE') {
+  try {
+    const sessionId = generateSessionId();
+
+    await axios.post(
+      'https://labs.google/fx/api/trpc/general.submitBatchLog',
+      {
+        json: {
+          appEvents: [{
+            event: eventName,
+            eventMetadata: {
+              sessionId: sessionId
+            },
+            eventProperties: [
+              { key: 'TOOL_NAME', stringValue: 'PINHOLE' },
+              { key: 'QUERY_ID', stringValue: queryId },
+              { key: 'PINHOLE_VIDEO_ASPECT_RATIO', stringValue: aspectRatio },
+              { key: 'G1_PAYGATE_TIER', stringValue: 'PAYGATE_TIER_TWO' },
+              { key: 'PINHOLE_PROMPT_BOX_MODE', stringValue: mode },
+              { key: 'USER_AGENT', stringValue: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36' },
+              { key: 'IS_DESKTOP' }
+            ],
+            activeExperiments: [],
+            eventTime: new Date().toISOString()
+          }]
+        }
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Referer': 'https://labs.google/fx/tools/flow',
+          'Origin': 'https://labs.google'
+        }
+      }
+    );
+  } catch (err) {
+    log(`Log submission failed (non-critical): ${err.message}`);
+  }
+}
+
+// Helper: submit video timer log - ĐÚNG CẤU TRÚC API
+async function submitVideoTimerLog(token, timerId) {
+  try {
+    const sessionId = generateSessionId();
+
+    await axios.post(
+      'https://labs.google/fx/api/trpc/general.submitBatchLog',
+      {
+        json: {
+          appEvents: [{
+            event: 'VIDEO_CREATION_TO_VIDEO_COMPLETION',
+            eventProperties: [
+              { key: 'TIMER_ID', stringValue: timerId },
+              { key: 'TOOL_NAME', stringValue: 'PINHOLE' },
+              { key: 'CURRENT_TIME_MS', intValue: String(Date.now()) },
+              { key: 'USER_AGENT', stringValue: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36' },
+              { key: 'IS_DESKTOP' }
+            ],
+            activeExperiments: [],
+            eventMetadata: {
+              sessionId: sessionId
+            },
+            eventTime: new Date().toISOString()
+          }]
+        }
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Referer': 'https://labs.google/fx/tools/flow',
+          'Origin': 'https://labs.google'
+        }
+      }
+    );
+  } catch (err) {
+    log(`Timer log submission failed (non-critical): ${err.message}`);
+  }
+}
+
+// Veo3 state - manual projectId và sceneId (ngon.js approach)
+let veo3Session = {
+  projectId: null,
+  sceneId: null,
+  createdAt: null,
+  manualProjectId: null, // User set qua API
+  manualSceneId: null // User set qua API
+};
+
+// Set manual project ID and scene ID (theo cách ngon.js)
+app.post('/api/veo3/set-project', async (req, res) => {
+  try {
+    const { projectId, sceneId } = req.body;
+
+    if (!projectId) {
+      return res.json({ success: false, error: 'No projectId provided' });
+    }
+
+    if (!sceneId) {
+      return res.json({ success: false, error: 'No sceneId provided. Both projectId and sceneId are required!' });
+    }
+
+    veo3Session.projectId = projectId;
+    veo3Session.sceneId = sceneId;
+    veo3Session.manualProjectId = projectId;
+    veo3Session.manualSceneId = sceneId;
+    veo3Session.createdAt = Date.now();
+
+    log(`✓ Manual project ID set: ${projectId}`);
+    log(`✓ Manual scene ID set: ${sceneId}`);
+    res.json({
+      success: true,
+      projectId,
+      sceneId,
+      message: 'Manual project ID and scene ID set successfully'
+    });
+  } catch (err) {
+    log(`✗ Set project/scene failed: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Get current Veo3 session (projectId & sceneId)
+app.get('/api/veo3/get-session', (req, res) => {
+  try {
+    if (veo3Session.projectId && veo3Session.sceneId) {
+      res.json({
+        success: true,
+        projectId: veo3Session.projectId,
+        sceneId: veo3Session.sceneId,
+        createdAt: veo3Session.createdAt
+      });
+    } else {
+      res.json({
+        success: false,
+        message: 'No project/scene set. Please set manually first.'
+      });
+    }
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Create Veo3 project (tự động - KHÔNG DÙNG)
+app.post('/api/veo3/create-project', async (req, res) => {
+  try {
+    // Nếu đã có manual project, dùng luôn
+    if (veo3Session.manualProjectId) {
+      log(`Using existing manual project: ${veo3Session.manualProjectId}`);
+      return res.json({ success: true, projectId: veo3Session.manualProjectId, manual: true });
+    }
+
+    log('Creating Veo3 project...');
+
+    const token = await getAccessToken();
+
+    // Try standard TRPC format
+    const response = await axios.post(
+      'https://labs.google/fx/api/trpc/project.create',
+      { json: { toolName: 'PINHOLE' } },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Referer': 'https://labs.google/fx/vi/tools/flow',
+          'Origin': 'https://labs.google/fx'
+        },
+        timeout: 30000
+      }
+    );
+
+    const projectId = response.data.result.data.json.projectId;
+    veo3Session.projectId = projectId;
+    veo3Session.createdAt = Date.now();
+
+    log(`✓ Veo3 project created: ${projectId}`);
+    res.json({ success: true, projectId });
+  } catch (err) {
+    log(`✗ Create project failed: ${err.message}`, 'error');
+    if (err.response?.data) {
+      log(`Error response: ${JSON.stringify(err.response.data)}`);
+    }
+
+    // Gợi ý workaround
+    const errorMsg = `Cannot auto-create project. Please create manually at https://labs.google/fx/tools/flow and use /api/veo3/set-project`;
+
+    res.json({
+      success: false,
+      error: err.message,
+      details: err.response?.data,
+      workaround: errorMsg
+    });
+  }
+});
+
+// Create Veo3 scene
+app.post('/api/veo3/create-scene', async (req, res) => {
+  try {
+    const { projectId } = req.body;
+    const useProjectId = projectId || veo3Session.projectId;
+
+    if (!useProjectId) {
+      return res.json({ success: false, error: 'No project ID' });
+    }
+
+    log(`Creating Veo3 scene in project ${useProjectId}...`);
+
+    const token = await getAccessToken();
+    const response = await axios.post(
+      'https://labs.google/fx/api/trpc/project.createScene',
+      { json: { projectId: useProjectId, toolName: 'PINHOLE' } },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Referer': 'https://labs.google/fx/vi/tools/flow',
+          'Origin': 'https://labs.google/fx'
+        }
+      }
+    );
+
+    const sceneId = response.data.result.data.json.sceneId;
+    veo3Session.sceneId = sceneId;
+
+    log(`✓ Veo3 scene created: ${sceneId}`);
+    res.json({ success: true, sceneId, projectId: useProjectId });
+  } catch (err) {
+    log(`✗ Create scene failed: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Upload image for Veo3
+app.post('/api/veo3/upload-image', async (req, res) => {
+  try {
+    const { imageBase64 } = req.body;
+
+    if (!imageBase64) {
+      return res.json({ success: false, error: 'No image provided' });
+    }
+
+    log('Uploading image to Veo3...');
+
+    const token = await getAccessToken();
+    const response = await axios.post(
+      'https://labs.google/fx/api/trpc/media.uploadImage',
+      { json: { userUploadedImage: { image: imageBase64 } } },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Referer': 'https://labs.google/fx/vi/tools/flow',
+          'Origin': 'https://labs.google/fx'
+        }
+      }
+    );
+
+    const mediaKey = response.data.result.data.json.mediaGenerationId.mediaKey;
+
+    log(`✓ Image uploaded: ${mediaKey.substring(0, 20)}...`);
+    res.json({ success: true, mediaKey });
+  } catch (err) {
+    log(`✗ Upload image failed: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Generate Veo3 video
+app.post('/api/veo3/generate', async (req, res) => {
+  try {
+    const {
+      prompt,
+      startImageKey,
+      endImageKey,
+      modelKey,
+      aspectRatio,
+      lengthSeconds,
+      projectId,
+      sceneId
+    } = req.body;
+
+    const useProjectId = projectId || veo3Session.projectId;
+    const useSceneId = sceneId || veo3Session.sceneId;
+
+    if (!useProjectId || !useSceneId) {
+      return res.json({ success: false, error: 'Missing project or scene ID' });
+    }
+
+    log(`Generating Veo3 video: "${prompt.substring(0, 50)}..."`);
+
+    const payload = {
+      modelKey: modelKey || 'veo_3_1_i2v_s_fast_ultra_fl',
+      prompt,
+      startImageKey,
+      aspectRatio: aspectRatio || 'VIDEO_ASPECT_RATIO_LANDSCAPE',
+      lengthSeconds: lengthSeconds || 8,
+      fps: 24,
+      projectId: useProjectId,
+      sceneId: useSceneId
+    };
+
+    if (endImageKey) {
+      payload.endImageKey = endImageKey;
+    }
+
+    const token = await getAccessToken();
+    const response = await axios.post(
+      'https://labs.google/fx/api/trpc/video.generate',
+      { json: payload },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Referer': 'https://labs.google/fx/vi/tools/flow',
+          'Origin': 'https://labs.google/fx'
+        }
+      }
+    );
+
+    const mediaGenerationId = response.data.result.data.json.mediaGenerationId;
+
+    log(`✓ Video generation started: ${mediaGenerationId.mediaKey.substring(0, 20)}...`);
+    res.json({ success: true, mediaGenerationId });
+  } catch (err) {
+    log(`✗ Generate video failed: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Get Veo3 generation status
+app.post('/api/veo3/status', async (req, res) => {
+  try {
+    const { mediaGenerationId } = req.body;
+
+    if (!mediaGenerationId) {
+      return res.json({ success: false, error: 'No mediaGenerationId' });
+    }
+
+    const token = await getAccessToken();
+    const response = await axios.post(
+      'https://labs.google/fx/api/trpc/video.getGenerationStatus',
+      { json: { mediaGenerationId } },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Referer': 'https://labs.google/fx/vi/tools/flow',
+          'Origin': 'https://labs.google/fx'
+        }
+      }
+    );
+
+    const status = response.data.result.data.json;
+    res.json({ success: true, status });
+  } catch (err) {
+    log(`✗ Get status failed: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Save Veo3 video variants
+app.post('/api/veo3/save-variants', async (req, res) => {
+  try {
+    const { variants, baseFilename } = req.body;
+
+    if (!variants || !Array.isArray(variants)) {
+      return res.json({ success: false, error: 'No variants provided' });
+    }
+
+    const VIDEO_DIR = path.join(__dirname, 'videos');
+    await fs.mkdir(VIDEO_DIR, { recursive: true });
+
+    const savedVideos = [];
+
+    for (let i = 0; i < variants.length; i++) {
+      const variant = variants[i];
+      if (!variant.videoBase64) continue;
+
+      const filename = `${baseFilename}_v${i + 1}.mp4`;
+      const filepath = path.join(VIDEO_DIR, filename);
+
+      const buffer = Buffer.from(variant.videoBase64, 'base64');
+      await fs.writeFile(filepath, buffer);
+
+      log(`✓ Saved video: ${filename}`);
+
+      savedVideos.push({
+        filename,
+        url: `/videos/${filename}`,
+        index: i
+      });
+    }
+
+    res.json({ success: true, videos: savedVideos });
+  } catch (err) {
+    log(`✗ Save variants failed: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// ============================================
+// VEO3 NEW ENDPOINTS - THEO ĐÚNG FLOW THỰC TẾ
+// ============================================
+
+// Submit batch log (PINHOLE_UPLOAD_IMAGE_TO_CROP, PINHOLE_RESIZE_IMAGE)
+app.post('/api/veo3/submit-batch-log', async (req, res) => {
+  try {
+    const { event, sessionId, properties, aspectRatio } = req.body;
+
+    log(`Veo3 Event: ${event}`);
+
+    const token = await getAccessToken();
+
+    // Build event payload
+    const eventProperties = [
+      { key: 'TOOL_NAME', stringValue: 'PINHOLE' },
+      { key: 'G1_PAYGATE_TIER', stringValue: 'PAYGATE_TIER_TWO' },
+      { key: 'PINHOLE_PROMPT_BOX_MODE', stringValue: 'IMAGE_TO_VIDEO' },
+      { key: 'USER_AGENT', stringValue: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      { key: 'IS_DESKTOP' }
+    ];
+
+    if (properties?.width) {
+      eventProperties.push({ key: 'PINHOLE_UPLOAD_IMAGE_TO_CROP_WIDTH', doubleValue: properties.width });
+      eventProperties.push({ key: 'PINHOLE_UPLOAD_IMAGE_TO_CROP_HEIGHT', doubleValue: properties.height });
+    }
+
+    if (aspectRatio) {
+      eventProperties.push({ key: 'PINHOLE_IMAGE_ASPECT_RATIO', stringValue: aspectRatio });
+    }
+
+    const response = await axios.post(
+      'https://labs.google/fx/api/trpc/general.submitBatchLog',
+      {
+        json: {
+          appEvents: [{
+            event,
+            eventMetadata: { sessionId },
+            eventProperties,
+            activeExperiments: [],
+            eventTime: new Date().toISOString()
+          }]
+        }
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Referer': 'https://labs.google/fx/tools/flow',
+          'Origin': 'https://labs.google'
+        }
+      }
+    );
+
+    log(`✓ Event ${event} sent`);
+    res.json({ success: true });
+  } catch (err) {
+    log(`✗ Submit batch log failed: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Upload raw image (step 1 of 2)
+app.post('/api/veo3/upload-raw-image', async (req, res) => {
+  try {
+    const { rawImageBytes, aspectRatio } = req.body;
+
+    log('Uploading raw image to Veo3 (step 1/2)...');
+
+    const token = await getAccessToken();
+
+    // Generate sessionId
+    const sessionId = generateSessionId();
+
+    // Convert VIDEO_ASPECT_RATIO to IMAGE_ASPECT_RATIO
+    let imageAspectRatio = aspectRatio || 'IMAGE_ASPECT_RATIO_LANDSCAPE';
+    if (aspectRatio && aspectRatio.startsWith('VIDEO_')) {
+      imageAspectRatio = aspectRatio.replace('VIDEO_', 'IMAGE_');
+    }
+
+    log(`Aspect ratio: ${aspectRatio} -> ${imageAspectRatio}`);
+
+    // Upload raw image qua v1:uploadUserImage - ĐÚNG CẤU TRÚC API
+    const accountName = session.currentAccountName || 'default';
+    const proxyString = session.currentProxy || null;
+
+    const uploadResponse = await axiosWithRetry({
+      method: 'POST',
+      url: 'https://aisandbox-pa.googleapis.com/v1:uploadUserImage',
+      data: {
+        imageInput: {
+          rawImageBytes: rawImageBytes,
+          mimeType: 'image/jpeg',
+          isUserUploaded: true,
+          aspectRatio: imageAspectRatio
+        },
+        clientContext: {
+          sessionId: sessionId,
+          tool: 'ASSET_MANAGER'
+        }
+      },
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Referer': 'https://labs.google/fx/tools/flow'
+      }
+    }, 0, 5, accountName, proxyString);
+
+    // Extract mediaGenerationId from response
+    const mediaGenerationId = uploadResponse.data?.mediaGenerationId?.mediaGenerationId;
+    const width = uploadResponse.data?.width;
+    const height = uploadResponse.data?.height;
+
+    log(`✓ Raw image uploaded (step 1/2) - mediaGenerationId: ${mediaGenerationId?.substring(0, 30)}...`);
+    res.json({
+      success: true,
+      data: uploadResponse.data,
+      mediaGenerationId,
+      width,
+      height
+    });
+  } catch (err) {
+    log(`✗ Upload raw image failed: ${err.message}`, 'error');
+    if (err.response?.data) {
+      log(`Error response: ${JSON.stringify(err.response.data)}`);
+    }
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Upload cropped image và lấy mediaId (step 2 of 2)
+app.post('/api/veo3/upload-cropped-image', async (req, res) => {
+  try {
+    const { imageBase64, aspectRatio } = req.body;
+
+    log('Uploading cropped image to Veo3 (step 2/2)...');
+
+    const token = await getAccessToken();
+
+    // Generate sessionId
+    const sessionId = generateSessionId();
+
+    // Remove data URL prefix if exists
+    let cleanBase64 = imageBase64;
+    if (imageBase64.includes('base64,')) {
+      cleanBase64 = imageBase64.split('base64,')[1];
+    }
+
+    // Convert VIDEO_ASPECT_RATIO to IMAGE_ASPECT_RATIO
+    let imageAspectRatio = aspectRatio || 'IMAGE_ASPECT_RATIO_LANDSCAPE';
+    if (aspectRatio && aspectRatio.startsWith('VIDEO_')) {
+      imageAspectRatio = aspectRatio.replace('VIDEO_', 'IMAGE_');
+    }
+
+    log(`Aspect ratio: ${aspectRatio} -> ${imageAspectRatio}`);
+
+    // Upload cropped image qua CÙNG endpoint v1:uploadUserImage
+    const accountName = session.currentAccountName || 'default';
+    const proxyString = session.currentProxy || null;
+
+    const uploadResponse = await axiosWithRetry({
+      method: 'POST',
+      url: 'https://aisandbox-pa.googleapis.com/v1:uploadUserImage',
+      data: {
+        imageInput: {
+          rawImageBytes: cleanBase64,
+          mimeType: 'image/jpeg',
+          isUserUploaded: true,
+          aspectRatio: imageAspectRatio
+        },
+        clientContext: {
+          sessionId: sessionId,
+          tool: 'ASSET_MANAGER'
+        }
+      },
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Referer': 'https://labs.google/fx/tools/flow'
+      }
+    }, 0, 5, accountName, proxyString);
+
+    // Extract mediaGenerationId from response
+    const mediaGenerationId = uploadResponse.data?.mediaGenerationId?.mediaGenerationId;
+    const mediaId = mediaGenerationId; // This is the mediaId to use for video generation
+
+    log(`✓ Cropped image uploaded (step 2/2) - mediaId: ${mediaId?.substring(0, 30)}...`);
+
+    res.json({ success: true, mediaId });
+  } catch (err) {
+    log(`✗ Upload cropped image failed: ${err.message}`, 'error');
+    if (err.response?.data) {
+      log(`Error response: ${JSON.stringify(err.response.data)}`);
+    }
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Generate video from 2 images (start + end)
+app.post('/api/veo3/generate-start-end', async (req, res) => {
+  try {
+    const { projectId, sceneId, startImageMediaId, endImageMediaId, prompt, aspectRatio, seeds } = req.body;
+
+    log(`Generating start-end video: "${prompt.substring(0, 50)}..."`);
+
+    // FORCE refresh access token for Veo3 video calls (avoid using stale token cache)
+    const token = await getAccessToken(true);
+
+    const accountName = session.currentAccountName || 'default';
+    const proxyString = null; // IMPORTANT: do NOT use proxy for Veo3 video endpoint (must match browser call)
+
+    // Generate unique IDs for logs
+    const sessionId = generateSessionId();
+    const queryId = `PINHOLE_MAIN_VIDEO_GENERATION_CACHE_ID${cryptoRandomId()}`;
+    const timerId = `VIDEO_CREATION_TO_VIDEO_COMPLETION${cryptoRandomId()}`;
+
+    // Send 3 logs before generation (với aspectRatio)
+    await submitBatchLog(token, 'VIDEOFX_CREATE_VIDEO', 'IMAGE_TO_VIDEO', queryId, aspectRatio);
+    await submitBatchLog(token, 'PINHOLE_GENERATE_VIDEO', 'IMAGE_TO_VIDEO', queryId, aspectRatio);
+    await submitVideoTimerLog(token, timerId);
+
+    const seedsArray = seeds || [Math.floor(Math.random() * 65536), Math.floor(Math.random() * 65536)];
+
+    const response = await axiosWithRetry({
+      method: 'POST',
+      url: 'https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoStartAndEndImage',
+      data: {
+        clientContext: {
+          sessionId: sessionId,
+          projectId,
+          tool: 'PINHOLE',
+          userPaygateTier: 'PAYGATE_TIER_TWO'
+        },
+        requests: seedsArray.map(seed => ({
+          aspectRatio,
+          seed,
+          textInput: { prompt },
+          videoModelKey: 'veo_3_1_i2v_s_fast_ultra_fl',
+          startImage: { mediaId: startImageMediaId },
+          endImage: { mediaId: endImageMediaId },
+          metadata: { sceneId }
+        }))
+      },
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'text/plain;charset=UTF-8',
+        'Origin': 'https://labs.google',
+        'Referer': 'https://labs.google/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'x-client-data': 'CIqUywE='
+      }
+    }, 0, 5, accountName, proxyString);
+
+    const operations = response.data.operations.map(op => ({
+      operation: { name: op.operation.name },
+      sceneId: op.sceneId,
+      status: op.status
+    }));
+
+    log(`✓ Start-end video generation started! ${operations.length} variants`);
+    res.json({ success: true, operations });
+  } catch (err) {
+    log(`✗ Generate start-end video failed: ${err.message}`, 'error');
+    if (err.response && err.response.data) {
+      try {
+        log(`Generate-start-end error body: ${JSON.stringify(err.response.data)}`, 'error');
+      } catch (jsonErr) {
+        log(`Generate-start-end error body (raw): ${String(err.response.data)}`, 'error');
+      }
+    }
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Generate video from 1 image (start only)
+// OLD ENDPOINT - REMOVED (duplicate, causes conflicts)
+
+// Generate video from text only (text-to-video)
+app.post('/api/veo3/generate-text', async (req, res) => {
+  try {
+    const { clientContext, requests } = req.body;
+
+    log(`Generating text-to-video: ${requests.length} requests`);
+
+    const token = await getAccessToken();
+
+    // Ensure sessionId in clientContext
+    const sessionId = generateSessionId();
+    const finalClientContext = clientContext ? {
+      ...clientContext,
+      sessionId: clientContext.sessionId || sessionId
+    } : {
+      sessionId: sessionId,
+      projectId: veo3Session.projectId,
+      tool: 'PINHOLE',
+      userPaygateTier: 'PAYGATE_TIER_TWO'
+    };
+
+    const response = await axios.post(
+      'https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoText',
+      {
+        clientContext: finalClientContext,
+        requests
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'text/plain;charset=UTF-8',
+          'Referer': 'https://labs.google/',
+          'x-browser-channel': 'stable',
+          'x-browser-year': '2025',
+          'x-client-data': 'CIyIywE='
+        }
+      }
+    );
+
+    const operations = response.data.operations.map(op => ({
+      operation: { name: op.operation.name },
+      sceneId: op.sceneId,
+      status: op.status
+    }));
+
+    log(`✓ Text-to-video generation started! ${operations.length} variants`);
+    res.json({ success: true, operations });
+  } catch (err) {
+    log(`✗ Generate text-to-video failed: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Generate video with start image + text (batch API)
+app.post('/api/veo3/generate-start-image', async (req, res) => {
+  try {
+    const { clientContext, requests } = req.body;
+
+    if (!clientContext || !requests || !requests.length) {
+      return res.json({ success: false, error: 'Missing clientContext or requests' });
+    }
+
+    // Extract info from first request for logging
+    const firstRequest = requests[0];
+    const prompt = firstRequest.textInput?.prompt || '';
+    const aspectRatio = firstRequest.aspectRatio || 'VIDEO_ASPECT_RATIO_LANDSCAPE';
+
+    log(`Generating start-image video: "${prompt.substring(0, 50)}..." (${requests.length} variants)`);
+
+    const token = await getAccessToken();
+
+    // Generate unique IDs for logs
+    const queryId = `PINHOLE_MAIN_VIDEO_GENERATION_CACHE_ID${cryptoRandomId()}`;
+    const timerId = `VIDEO_CREATION_TO_VIDEO_COMPLETION${cryptoRandomId()}`;
+
+    // Send batch logs before generation
+    await submitBatchLog(token, 'VIDEOFX_CREATE_VIDEO', 'IMAGE_TO_VIDEO', queryId, aspectRatio);
+    await submitBatchLog(token, 'PINHOLE_GENERATE_VIDEO', 'IMAGE_TO_VIDEO', queryId, aspectRatio);
+    await submitVideoTimerLog(token, timerId);
+
+    // Ensure sessionId in clientContext
+    const sessionId = generateSessionId();
+    const finalClientContext = {
+      ...clientContext,
+      sessionId: clientContext.sessionId || sessionId
+    };
+
+    // Log request body for debugging
+    const requestBody = {
+      clientContext: finalClientContext,
+      requests
+    };
+    log(`📤 Request body: ${JSON.stringify(requestBody, null, 2).substring(0, 1000)}...`);
+
+    const response = await axios.post(
+      'https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoStartImage',
+      {
+        clientContext: finalClientContext,
+        requests
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'text/plain;charset=UTF-8',
+          'Referer': 'https://labs.google/',
+          'x-browser-channel': 'stable',
+          'x-browser-year': '2025',
+          'x-client-data': 'CIyIywE='
+        }
+      }
+    );
+
+    const operations = response.data.operations.map(op => ({
+      operation: { name: op.operation.name },
+      sceneId: op.sceneId,
+      status: op.status
+    }));
+
+    log(`✓ Start-image-to-video generation started! ${operations.length} variants`);
+    res.json({ success: true, operations });
+  } catch (err) {
+    log(`✗ Generate start-image-to-video failed: ${err.message}`, 'error');
+    if (err.response?.data) {
+      log(`✗ Error response data: ${JSON.stringify(err.response.data)}`, 'error');
+    }
+    if (err.response?.status) {
+      log(`✗ Error response status: ${err.response.status}`, 'error');
+    }
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Extend video
+app.post('/api/veo3/extend-video', async (req, res) => {
+  try {
+    // Frontend gửi ĐÚNG format của Google API
+    const { clientContext, requests } = req.body;
+
+    if (!clientContext || !requests || !requests.length) {
+      return res.json({ success: false, error: 'Missing clientContext or requests' });
+    }
+
+    // Extract info from first request for logging
+    const firstRequest = requests[0];
+    const prompt = firstRequest.textInput?.prompt || '';
+    const aspectRatio = firstRequest.aspectRatio || 'VIDEO_ASPECT_RATIO_LANDSCAPE';
+
+    log(`Extending video: "${prompt.substring(0, 50)}..."`);
+
+    const token = await getAccessToken();
+
+    // Generate unique IDs for logs
+    const queryId = `PINHOLE_MAIN_VIDEO_GENERATION_CACHE_ID${cryptoRandomId()}`;
+    const timerId = `VIDEO_CREATION_TO_VIDEO_COMPLETION${cryptoRandomId()}`;
+
+    // Send 3 logs before generation
+    await submitBatchLog(token, 'VIDEOFX_CREATE_VIDEO', 'EXTEND_VIDEO', queryId, aspectRatio);
+    await submitBatchLog(token, 'PINHOLE_GENERATE_VIDEO', 'EXTEND_VIDEO', queryId, aspectRatio);
+    await submitVideoTimerLog(token, timerId);
+
+    // Use body AS-IS from frontend (already in correct format)
+    const response = await axios.post(
+      'https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoExtendVideo',
+      { clientContext, requests },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'text/plain;charset=UTF-8',
+          'Referer': 'https://labs.google/',
+          'x-browser-channel': 'stable',
+          'x-browser-year': '2025',
+          'x-client-data': 'CIyIywE='
+        }
+      }
+    );
+
+    // Return all operations
+    const operations = response.data.operations.map(op => ({
+      operation: { name: op.operation.name },
+      sceneId: op.sceneId,
+      status: op.status
+    }));
+
+    log(`✓ Extend started! ${operations.length} variants`);
+    res.json({ success: true, operations });
+  } catch (err) {
+    log(`✗ Extend video failed: ${err.message}`, 'error');
+    if (err.response?.data) {
+      log(`Error response: ${JSON.stringify(err.response.data)}`);
+    }
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Generate video from reference images (Reference to Video)
+app.post('/api/veo3/generate-reference-video', async (req, res) => {
+  try {
+    // Frontend gửi ĐÚNG format của Google API
+    const { clientContext, requests } = req.body;
+
+    if (!clientContext || !requests || !requests.length) {
+      return res.json({ success: false, error: 'Missing clientContext or requests' });
+    }
+
+    // Extract info from first request for logging
+    const firstRequest = requests[0];
+    const prompt = firstRequest.textInput?.prompt || '';
+    const aspectRatio = firstRequest.aspectRatio || 'VIDEO_ASPECT_RATIO_LANDSCAPE';
+
+    log(`Generating reference video: "${prompt.substring(0, 50)}..."`);
+
+    const token = await getAccessToken();
+
+    // Generate unique IDs for logs
+    const queryId = `PINHOLE_MAIN_VIDEO_GENERATION_CACHE_ID${cryptoRandomId()}`;
+    const timerId = `VIDEO_CREATION_TO_VIDEO_COMPLETION${cryptoRandomId()}`;
+
+    // Send 3 logs before generation
+    await submitBatchLog(token, 'VIDEOFX_CREATE_VIDEO', 'REFERENCE_TO_VIDEO', queryId, aspectRatio);
+    await submitBatchLog(token, 'PINHOLE_GENERATE_VIDEO', 'REFERENCE_TO_VIDEO', queryId, aspectRatio);
+    await submitVideoTimerLog(token, timerId);
+
+    // Use body AS-IS from frontend (already in correct format)
+    const response = await axios.post(
+      'https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoReferenceImages',
+      { clientContext, requests },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'text/plain;charset=UTF-8',
+          'Referer': 'https://labs.google/',
+          'x-browser-channel': 'stable',
+          'x-browser-year': '2025',
+          'x-client-data': 'CIyIywE='
+        }
+      }
+    );
+
+    // Return all operations
+    const operations = response.data.operations.map(op => ({
+      operation: { name: op.operation.name },
+      sceneId: op.sceneId,
+      status: op.status
+    }));
+
+    log(`✓ Reference video generation started! ${operations.length} variants`);
+    res.json({ success: true, operations });
+  } catch (err) {
+    log(`✗ Generate reference video failed: ${err.message}`, 'error');
+    if (err.response?.data) {
+      log(`Error response: ${JSON.stringify(err.response.data)}`);
+    }
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Check video generation status
+app.post('/api/veo3/check-status', async (req, res) => {
+  try {
+    const { operations } = req.body;
+
+    const token = await getAccessToken();
+
+    const response = await axios.post(
+      'https://aisandbox-pa.googleapis.com/v1/video:batchCheckAsyncVideoGenerationStatus',
+      { operations },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'text/plain;charset=UTF-8',
+          'Referer': 'https://labs.google/',
+          'x-browser-channel': 'stable',
+          'x-browser-year': '2025',
+          'x-client-data': 'CIyIywE='
+        }
+      }
+    );
+
+    // Parse operations and extract fifeUrl if SUCCESSFUL
+    const parsedOps = response.data.operations.map(op => {
+      const result = {
+        operation: op.operation,
+        status: op.status,
+        sceneId: op.sceneId
+      };
+
+      // If SUCCESSFUL, extract video data from operation.metadata.video
+      if (op.status === 'MEDIA_GENERATION_STATUS_SUCCESSFUL' || op.status === 'SUCCESSFUL') {
+        // Video data is in operation.metadata.video
+        const videoData = op.operation?.metadata?.video;
+
+        if (videoData) {
+          result.video = {
+            url: videoData.fifeUrl || videoData.url,
+            mediaId: videoData.mediaGenerationId,
+            mediaGenerationId: videoData.mediaGenerationId,
+            seed: videoData.seed,
+            prompt: videoData.prompt
+          };
+          log(`✓ Video ready: ${videoData.fifeUrl?.substring(0, 50)}...`);
+        }
+      }
+
+      return result;
+    });
+
+    res.json({ success: true, operations: parsedOps });
+  } catch (err) {
+    log(`✗ Check status failed: ${err.message}`, 'error');
+
+    // Handle 401 specifically
+    if (err.response?.status === 401) {
+      log('⚠️ Token expired! Please refresh by clicking "Bắt Token" button', 'error');
+      return res.json({
+        success: false,
+        error: 'Token đã hết hạn! Vui lòng click nút "Bắt Token" để làm mới.',
+        tokenExpired: true,
+        statusCode: 401
+      });
+    }
+
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Update scene - Add clip to project (bước cuối cùng!)
+app.post('/api/veo3/update-scene', async (req, res) => {
+  try {
+    const { projectId, sceneId, clips } = req.body;
+
+    log(`Updating scene with ${clips.length} clips...`);
+
+    const token = await getAccessToken();
+
+    const response = await axios.post(
+      'https://labs.google/fx/api/trpc/project.updateScene',
+      {
+        json: {
+          projectId,
+          scene: {
+            sceneId,
+            clips
+          },
+          toolName: 'PINHOLE',
+          updateMasks: ['clips']
+        }
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Referer': 'https://labs.google/fx/tools/flow',
+          'Origin': 'https://labs.google'
+        }
+      }
+    );
+
+    log(`✓ Scene updated successfully!`);
+    res.json({ success: true, data: response.data });
+  } catch (err) {
+    log(`✗ Update scene failed: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Get project data (scenes and clips) from Google
+app.post('/api/veo3/get-project', async (req, res) => {
+  try {
+    const { projectId } = req.body;
+
+    if (!projectId) {
+      return res.json({ success: false, error: 'No projectId provided' });
+    }
+
+    log(`Getting project data: ${projectId}`);
+
+    const token = await getAccessToken();
+
+    const response = await axios.post(
+      'https://labs.google/fx/api/trpc/project.get',
+      {
+        json: { projectId, toolName: 'PINHOLE' }
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Referer': 'https://labs.google/fx/tools/flow',
+          'Origin': 'https://labs.google'
+        }
+      }
+    );
+
+    const projectData = response.data?.result?.data?.json;
+
+    if (!projectData) {
+      throw new Error('No project data in response');
+    }
+
+    log(`✓ Project data retrieved: ${projectData.scenes?.length || 0} scenes`);
+    res.json({ success: true, project: projectData });
+  } catch (err) {
+    log(`✗ Get project failed: ${err.message}`, 'error');
+
+    // Handle 401 specifically
+    if (err.response?.status === 401) {
+      log('⚠️ Token expired! Please refresh by clicking "Bắt Token" button', 'error');
+      return res.json({
+        success: false,
+        error: 'Token đã hết hạn! Vui lòng click nút "Bắt Token" để làm mới.',
+        tokenExpired: true,
+        statusCode: 401
+      });
+    }
+
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Spawn CMD process to download videos (like index.js)
+app.post('/api/veo3/spawn-download', async (req, res) => {
+  try {
+    const { videoUrls, outputDir } = req.body;
+
+    if (!videoUrls || !Array.isArray(videoUrls) || videoUrls.length === 0) {
+      return res.json({ success: false, error: 'Missing videoUrls array' });
+    }
+
+    // Default output directory
+    const downloadDir = outputDir || path.join(__dirname, 'videos');
+
+    log(`Spawning download process for ${videoUrls.length} videos...`);
+    log(`Output directory: ${downloadDir}`);
+
+    // Spawn new CMD window with download script
+    const scriptPath = path.join(__dirname, 'download-veo3-videos.js');
+    const args = [scriptPath, downloadDir, ...videoUrls];
+
+    // Platform-specific CMD spawn
+    let spawnCmd, spawnArgs, spawnOptions;
+
+    if (process.platform === 'win32') {
+      // Windows: Open new CMD window
+      spawnCmd = 'cmd.exe';
+      // Fix: Use /K to keep window open, simpler args structure
+      spawnArgs = ['/c', 'start', '"Video Download"', '/wait', 'cmd.exe', '/k', 'node', scriptPath, downloadDir, ...videoUrls];
+      spawnOptions = { detached: false, stdio: 'inherit', shell: true };
+      log(`Windows spawn: ${spawnCmd} ${spawnArgs.join(' ')}`);
+    } else {
+      // Linux/Mac: Check if GUI available
+      const hasXterm = fsSync.existsSync('/usr/bin/xterm');
+      const hasGnomeTerminal = fsSync.existsSync('/usr/bin/gnome-terminal');
+
+      if (hasXterm || hasGnomeTerminal) {
+        // GUI available: spawn terminal window
+        spawnCmd = hasXterm ? 'xterm' : 'gnome-terminal';
+        spawnArgs = hasXterm ? ['-hold', '-e', 'node', ...args] : ['--', 'node', ...args];
+        spawnOptions = { detached: true, stdio: 'ignore' };
+      } else {
+        // No GUI (Docker/headless): Run in background, pipe output to log file
+        spawnCmd = 'node';
+        spawnArgs = args;
+        const logPath = path.join(__dirname, 'videos', 'download.log');
+        const logStream = fsSync.createWriteStream(logPath, { flags: 'a' });
+        spawnOptions = {
+          detached: true,
+          stdio: ['ignore', logStream, logStream]
+        };
+        log(`Running download in background. Log: ${logPath}`);
+      }
+    }
+
+    const child = spawn(spawnCmd, spawnArgs, spawnOptions);
+
+    child.unref(); // Allow parent to exit independently
+
+    const isBackground = process.platform !== 'win32' && !fsSync.existsSync('/usr/bin/xterm') && !fsSync.existsSync('/usr/bin/gnome-terminal');
+    const statusMsg = isBackground
+      ? `Download running in background. Check ${path.join(downloadDir, 'download.log')}`
+      : 'Download window spawned!';
+
+    log(`✓ ${statusMsg}`);
+
+    res.json({
+      success: true,
+      message: `Spawned download process for ${videoUrls.length} videos`,
+      outputDir: downloadDir,
+      logFile: isBackground ? path.join(downloadDir, 'download.log') : null
+    });
+
+  } catch (err) {
+    log(`✗ Spawn download failed: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Download video from GCS signed URL (exactly like index.js - with progress logging)
+app.post('/api/veo3/download-video', async (req, res) => {
+  try {
+    const { fifeUrl, mediaId, sceneIndex, variantIndex, outputDir } = req.body;
+
+    if (!fifeUrl || !mediaId) {
+      return res.json({ success: false, error: 'Missing fifeUrl or mediaId' });
+    }
+
+    // Determine filename format: 1a, 1b, 2a, 2b, etc.
+    let filename, VIDEO_DIR;
+
+    if (sceneIndex !== undefined && variantIndex !== undefined) {
+      const variantLetter = String.fromCharCode(97 + variantIndex); // a, b, c, d...
+      filename = `${sceneIndex + 1}${variantLetter}.mp4`; // 1a.mp4, 1b.mp4, 2a.mp4, etc.
+
+      // Variant 0 goes to main folder, variants 1-3 go to "Tuy chon B/C/D" subfolders
+      const BASE_DIR = outputDir || path.join(__dirname, 'videos');
+      if (variantIndex === 0) {
+        VIDEO_DIR = BASE_DIR;
+      } else {
+        // Map variantIndex to folder: 1 -> B, 2 -> C, 3 -> D
+        const folderLetter = String.fromCharCode(66 + variantIndex - 1); // 66 is 'B'
+        VIDEO_DIR = path.join(BASE_DIR, `Tuy chon ${folderLetter}`);
+      }
+    } else {
+      // Fallback to mediaId naming
+      filename = `video_${mediaId}.mp4`;
+      VIDEO_DIR = outputDir || path.join(__dirname, 'videos');
+    }
+
+    const localPath = path.join(VIDEO_DIR, filename);
+
+    // Create videos directory if not exists
+    await fs.mkdir(VIDEO_DIR, { recursive: true });
+
+    // Delete existing file if it exists to avoid corruption
+    try {
+      await fs.unlink(localPath);
+      log(`🗑️ Deleted existing file: ${filename}`);
+    } catch (err) {
+      // File doesn't exist, that's fine
+    }
+
+    log(`\n[DOWNLOAD] Starting: ${filename}`);
+    log(`   URL: ${fifeUrl.substring(0, 80)}...`);
+
+    // Stream download from GCS (EXACTLY like index.js - no extra headers!)
+    const response = await axios({
+      method: 'GET',
+      url: fifeUrl,
+      responseType: 'stream',
+      timeout: 300000 // 5 minutes timeout for large videos
+    });
+
+    // Track download progress
+    let downloadedBytes = 0;
+    const totalBytes = parseInt(response.headers['content-length'] || 0);
+
+    const writeStream = fsSync.createWriteStream(localPath);
+
+    response.data.on('data', (chunk) => {
+      downloadedBytes += chunk.length;
+      if (totalBytes > 0) {
+        const percent = ((downloadedBytes / totalBytes) * 100).toFixed(1);
+        const downloadedMB = (downloadedBytes / 1024 / 1024).toFixed(2);
+        const totalMB = (totalBytes / 1024 / 1024).toFixed(2);
+        process.stdout.write(`\r   Progress: ${percent}% (${downloadedMB}/${totalMB} MB)`);
+      }
+    });
+
+    // Stream to local file and ensure it's properly closed
+    await streamPipeline(response.data, writeStream);
+
+    // Wait a bit for file system to flush
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Verify file was written correctly
+    const stats = await fs.stat(localPath);
+    if (stats.size === 0) {
+      throw new Error('Downloaded file is empty');
+    }
+    if (totalBytes > 0 && stats.size !== totalBytes) {
+      log(`⚠️ Warning: File size mismatch. Expected: ${totalBytes}, Got: ${stats.size}`, 'warn');
+    }
+
+    log(`\n   ✅ Saved: ${filename} (${(stats.size / 1024 / 1024).toFixed(2)} MB)\n`);
+
+    res.json({ success: true, localUrl: `/videos/${filename}`, size: stats.size });
+  } catch (err) {
+    log(`\n   ❌ Download failed: ${err.message}\n`, 'error');
+    if (err.response) {
+      log(`   Response status: ${err.response.status}`, 'error');
+    }
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Save reference image to project folder
+app.post('/api/save-reference', async (req, res) => {
+  try {
+    const { imageUrl, refFolderPath, projectName, refName, isRegen } = req.body;
+
+    if (!imageUrl || !refFolderPath || !projectName || !refName) {
+      return res.json({
+        success: false,
+        error: 'Missing required parameters: imageUrl, refFolderPath, projectName, refName'
+      });
+    }
+
+    // Validate that the reference base directory exists (D:\1\Ref)
+    try {
+      await fs.access(refFolderPath);
+      const stats = await fs.stat(refFolderPath);
+      if (!stats.isDirectory()) {
+        throw new Error('Path is not a directory');
+      }
+    } catch (err) {
+      log(`❌ Reference base directory does not exist: ${refFolderPath}`, 'error');
+      return res.json({
+        success: false,
+        error: `Thư mục Reference không tồn tại: ${refFolderPath}\n\nVui lòng tạo thư mục này trước hoặc chọn thư mục khác.`
+      });
+    }
+
+    // Create full path: refFolderPath\projectName
+    const projectFolder = path.join(refFolderPath, projectName);
+
+    // Ensure project folder exists
+    await fs.mkdir(projectFolder, { recursive: true });
+    log(`✓ Project folder ready: ${projectFolder}`);
+
+    const filename = `${refName}.jpg`;
+    const fullPath = path.join(projectFolder, filename);
+
+    // If regenerating, backup old file to Temp folder
+    if (isRegen) {
+      try {
+        const stats = await fs.stat(fullPath);
+        if (stats.isFile()) {
+          // Create Temp folder
+          const tempFolder = path.join(projectFolder, 'Temp');
+          await fs.mkdir(tempFolder, { recursive: true });
+
+          // Backup with timestamp
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const backupFilename = `${refName}_${timestamp}.jpg`;
+          const backupPath = path.join(tempFolder, backupFilename);
+
+          // Copy old file to backup
+          await fs.copyFile(fullPath, backupPath);
+          log(`📦 Backed up old version to: Temp/${backupFilename}`);
+        }
+      } catch (err) {
+        // File doesn't exist, no need to backup
+        log(`ℹ️ No existing file to backup for ${refName}`);
+      }
+    }
+
+    // Handle image URL - could be relative or full URL
+    let imageData;
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      // Full URL - download from external source
+      log(`Downloading reference image from: ${imageUrl}`);
+      const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+      imageData = response.data;
+    } else {
+      // Relative URL - copy from local file
+      const localPath = path.join(__dirname, imageUrl.replace(/^\//, ''));
+      log(`Copying reference image from local: ${localPath}`);
+      imageData = await fs.readFile(localPath);
+    }
+
+    // Save to file
+    await fs.writeFile(fullPath, imageData);
+
+    log(`✅ Reference saved: ${fullPath}`);
+    res.json({
+      success: true,
+      path: fullPath,
+      filename: filename,
+      projectFolder: projectFolder
+    });
+  } catch (err) {
+    log(`❌ Save reference failed: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Save mediaID to txt file
+app.post('/api/save-media-id', async (req, res) => {
+  try {
+    const { folderPath, projectName, index, mediaId } = req.body;
+
+    if (!folderPath || !projectName || !index || !mediaId) {
+      return res.json({
+        success: false,
+        error: 'Missing parameters'
+      });
+    }
+
+    // Create full path: folderPath\projectName
+    const projectFolder = path.join(folderPath, projectName);
+    await fs.mkdir(projectFolder, { recursive: true });
+
+    // File name: mediaIDs.txt
+    const txtFilePath = path.join(projectFolder, 'mediaIDs.txt');
+
+    // Read existing content or create new
+    let lines = [];
+    try {
+      const content = await fs.readFile(txtFilePath, 'utf-8');
+      lines = content.split('\n').filter(line => line.trim());
+    } catch (err) {
+      // File doesn't exist yet, start fresh
+      lines = [];
+    }
+
+    // Update or append this index's mediaID
+    const linePrefix = `${index}. `;
+    const existingLineIndex = lines.findIndex(line => line.startsWith(linePrefix));
+
+    if (existingLineIndex >= 0) {
+      // Update existing line
+      lines[existingLineIndex] = `${linePrefix}${mediaId}`;
+    } else {
+      // Append new line
+      lines.push(`${linePrefix}${mediaId}`);
+    }
+
+    // Sort lines by index number
+    lines.sort((a, b) => {
+      const aNum = parseInt(a.match(/^(\d+)\./)?.[1] || '0');
+      const bNum = parseInt(b.match(/^(\d+)\./)?.[1] || '0');
+      return aNum - bNum;
+    });
+
+    // Write back to file
+    await fs.writeFile(txtFilePath, lines.join('\n') + '\n', 'utf-8');
+
+    res.json({
+      success: true,
+      path: txtFilePath
+    });
+  } catch (err) {
+    log(`❌ Save mediaID failed: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Open folder in file explorer
+app.post('/api/open-folder', async (req, res) => {
+  try {
+    const { folderPath } = req.body;
+
+    if (!folderPath) {
+      return res.json({ success: false, error: 'No folder path provided' });
+    }
+
+    log(`Opening folder: ${folderPath}`);
+
+    // Determine the command based on platform
+    let command, args;
+
+    if (process.platform === 'win32') {
+      // Windows: Use explorer
+      command = 'explorer';
+      args = [folderPath.replace(/\//g, '\\')];
+    } else if (process.platform === 'darwin') {
+      // macOS: Use open
+      command = 'open';
+      args = [folderPath];
+    } else {
+      // Linux: Try xdg-open
+      command = 'xdg-open';
+      args = [folderPath];
+    }
+
+    const child = spawn(command, args, { detached: true, stdio: 'ignore' });
+    child.unref();
+
+    log(`✓ Opened folder: ${folderPath}`);
+    res.json({ success: true, message: 'Folder opened successfully' });
+  } catch (err) {
+    log(`✗ Open folder failed: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Serve videos
+app.use('/videos', express.static(path.join(__dirname, 'videos')));
+
+app.listen(3002, () => {
+  log('Server listening on http://localhost:3002');
+  log('Open: http://localhost:3002/index2.html\n');
+});

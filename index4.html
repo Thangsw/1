@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Whisk Multi-Acc Proxy Test (Index 4)</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f3f4f6;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      padding: 14px 18px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+    .header h1 {
+      margin: 0 0 4px;
+      font-size: 1.4rem;
+    }
+    .header p {
+      margin: 0;
+      font-size: 0.9rem;
+      opacity: 0.9;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 16px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 14px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    h2 {
+      font-size: 1rem;
+      margin: 0 0 10px;
+      color: #4f46e5;
+    }
+    .input-group {
+      margin-bottom: 10px;
+    }
+    .input-group label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      display: block;
+      margin-bottom: 4px;
+      color: #374151;
+    }
+    input, textarea, select {
+      width: 100%;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #d1d5db;
+      font-size: 0.85rem;
+      box-sizing: border-box;
+    }
+    textarea {
+      min-height: 80px;
+      resize: vertical;
+      font-family: 'Courier New', monospace;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: #4f46e5;
+      color: #fff;
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+    .btn.secondary {
+      background: #6b7280;
+    }
+    .btn.small {
+      font-size: 0.8rem;
+      padding: 4px 8px;
+    }
+    .token-pool-list {
+      max-height: 180px;
+      overflow-y: auto;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 6px;
+      font-size: 0.8rem;
+      background: #f9fafb;
+    }
+    .token-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 3px 2px;
+      gap: 6px;
+    }
+    .token-item label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+    .token-proxy-tag {
+      font-size: 0.7rem;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: #e0f2fe;
+      color: #0369a1;
+      white-space: nowrap;
+    }
+    .badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      background: #eef2ff;
+      color: #4338ca;
+      margin-left: 4px;
+    }
+    .status-line {
+      font-size: 0.8rem;
+      color: #4b5563;
+      margin-top: 4px;
+    }
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .result-item {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+      font-size: 0.8rem;
+    }
+    .result-item img {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      display: block;
+    }
+    .result-body {
+      padding: 6px 8px;
+    }
+    .result-body .idx {
+      font-weight: 600;
+      color: #4f46e5;
+      margin-bottom: 2px;
+    }
+    .log {
+      font-family: 'Courier New', monospace;
+      font-size: 0.8rem;
+      background: #111827;
+      color: #e5e7eb;
+      border-radius: 8px;
+      padding: 8px;
+      max-height: 260px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    .log-line.info { color: #a5b4fc; }
+    .log-line.success { color: #6ee7b7; }
+    .log-line.error { color: #fca5a5; }
+    .log-line.warn { color: #fde68a; }
+    @media (max-width: 900px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Index 4 - Test Multi Acc + Proxy (Whisk Image)</h1>
+      <p>Chọn nhiều token (mỗi token = 1 acc + proxy) → Load Token Pool → bắn nhanh prompts để xem mediaID + ảnh.</p>
+    </div>
+
+    <div class="grid">
+      <!-- LEFT: TOKEN POOL + TEST SETTINGS -->
+      <div class="card">
+        <h2>⚡ Token Pool (Multi Acc + Proxy)</h2>
+        <div class="input-group">
+          <label>Danh sách token (từ tokens.txt)</label>
+          <div id="tokenPoolStatus" class="status-line">Đang load...</div>
+        </div>
+        <div id="tokenList" class="token-pool-list">
+          <div style="font-size:0.8rem;color:#6b7280;">Đang đọc file tokens.txt...</div>
+        </div>
+        <div style="margin-top:8px;">
+          <button class="btn" onclick="loadTokenPool()">⚡ Load Token Pool</button>
+          <button class="btn secondary small" onclick="refreshTokenList()">🔄 Refresh</button>
+        </div>
+        <div class="status-line">
+          <strong>Lưu ý:</strong> server sẽ round-robin qua token pool khi gọi <code>/api/generate</code> → mỗi request dùng acc + proxy khác nhau.
+        </div>
+
+        <hr style="margin:12px 0;border:none;border-top:1px solid #e5e7eb;" />
+
+        <h2>🧪 Prompt Test Nhanh</h2>
+        <div class="input-group">
+          <label>Prompts test (mỗi dòng 1 prompt)</label>
+          <textarea id="testPrompts" placeholder="1. Simple test prompt 1
+2. Simple test prompt 2
+3. Simple test prompt 3"></textarea>
+        </div>
+        <div class="input-group">
+          <label>Aspect ratio</label>
+          <select id="testAspect">
+            <option value="IMAGE_ASPECT_RATIO_LANDSCAPE">Landscape (16:9)</option>
+            <option value="IMAGE_ASPECT_RATIO_PORTRAIT">Portrait (9:16)</option>
+            <option value="IMAGE_ASPECT_RATIO_SQUARE">Square (1:1)</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label>Common suffix (tuỳ chọn, sẽ gắn sau mọi prompt)</label>
+          <textarea id="testCommon" rows="2" placeholder="Ví dụ: anime style, vibrant colors, for kids"></textarea>
+        </div>
+        <div style="margin-top:4px;">
+          <button class="btn" onclick="runBurstTest()">🚀 Gen ảnh (multi acc + proxy)</button>
+        </div>
+        <div class="status-line" id="burstStatus">Chưa chạy test.</div>
+
+        <hr style="margin:12px 0;border:none;border-top:1px solid #e5e7eb;" />
+
+        <h2>🔑 MediaID copy nhanh</h2>
+        <div class="input-group">
+          <label>MediaID (generationId) vừa gen</label>
+          <textarea id="mediaIdOutput" readonly placeholder="Sau khi bắn test, mediaID sẽ hiển thị ở đây để copy sang index3 (MediaID Input / Veo3)."></textarea>
+        </div>
+      </div>
+
+      <!-- RIGHT: KẾT QUẢ + LOG -->
+      <div class="card">
+        <h2>📊 Kết quả ảnh + mediaID</h2>
+        <div id="results" class="results-grid"></div>
+
+        <h2 style="margin-top:14px;">🧾 Log</h2>
+        <div id="log" class="log"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let tokenListCache = [];
+
+    function appendLog(message, type = 'info') {
+      const logEl = document.getElementById('log');
+      const line = document.createElement('div');
+      line.className = 'log-line ' + type;
+      const ts = new Date().toLocaleTimeString();
+      line.textContent = '[' + ts + '] ' + message;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    async function refreshTokenList() {
+      try {
+        const res = await fetch('/api/list-tokens');
+        const data = await res.json();
+        const listEl = document.getElementById('tokenList');
+        const statusEl = document.getElementById('tokenPoolStatus');
+
+        listEl.innerHTML = '';
+
+        if (!data.success || !data.tokens || data.tokens.length === 0) {
+          listEl.innerHTML = '<div style="font-size:0.8rem;color:#6b7280;">Chưa có token nào trong tokens.txt.</div>';
+          statusEl.textContent = '0 token.';
+          tokenListCache = [];
+          appendLog('Không tìm thấy token nào trong tokens.txt', 'warn');
+          return;
+        }
+
+        tokenListCache = data.tokens;
+        statusEl.textContent = `Tìm thấy ${data.tokens.length} token.`;
+
+        data.tokens.forEach(t => {
+          const row = document.createElement('div');
+          row.className = 'token-item';
+          const proxyLabel = t.hasProxy ? '🌐 proxy' : '🏠 local';
+          row.innerHTML = `
+            <label>
+              <input type="checkbox" class="token-checkbox" value="${t.name}">
+              <span>${t.name}</span>
+            </label>
+            <span class="token-proxy-tag">${proxyLabel}</span>
+          `;
+          listEl.appendChild(row);
+        });
+
+        appendLog(`Đã load ${data.tokens.length} token từ tokens.txt`, 'info');
+      } catch (err) {
+        appendLog('Lỗi load token list: ' + err.message, 'error');
+      }
+    }
+
+    async function loadTokenPool() {
+      const checkboxes = document.querySelectorAll('.token-checkbox:checked');
+      const names = Array.from(checkboxes).map(c => c.value);
+      const statusEl = document.getElementById('tokenPoolStatus');
+
+      if (names.length === 0) {
+        alert('Chọn ít nhất 1 token để tạo pool.');
+        return;
+      }
+
+      appendLog(`Load token pool: ${names.join(', ')}`, 'info');
+      statusEl.textContent = 'Đang load pool...';
+
+      try {
+        const res = await fetch('/api/load-token-pool', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokenNames: names })
+        });
+        const data = await res.json();
+        if (data.success) {
+          statusEl.textContent = `✅ Pool: ${data.tokens.join(', ')}`;
+          appendLog(`Token pool ready với ${data.tokens.length} token`, 'success');
+        } else {
+          statusEl.textContent = 'Lỗi load pool';
+          appendLog('Lỗi load token pool: ' + data.error, 'error');
+        }
+      } catch (err) {
+        statusEl.textContent = 'Lỗi load pool';
+        appendLog('Lỗi load token pool: ' + err.message, 'error');
+      }
+    }
+
+    function parseTestPrompts() {
+      const raw = document.getElementById('testPrompts').value.trim();
+      if (!raw) return [];
+      return raw.split('\n')
+        .map(l => l.trim())
+        .filter(Boolean)
+        .map(line => line.replace(/^\d+\.\s*/, '').replace(/^#\d+[:.]\s*/i, ''));
+    }
+
+    async function runBurstTest() {
+      const prompts = parseTestPrompts();
+      const common = document.getElementById('testCommon').value.trim();
+      const aspect = document.getElementById('testAspect').value;
+      const burstStatus = document.getElementById('burstStatus');
+      const resultsEl = document.getElementById('results');
+      const mediaOut = document.getElementById('mediaIdOutput');
+
+      if (prompts.length === 0) {
+        alert('Nhập ít nhất 1 prompt để test.');
+        return;
+      }
+
+      resultsEl.innerHTML = '';
+      mediaOut.value = '';
+      burstStatus.textContent = `Đang gen ${prompts.length} ảnh...`;
+      appendLog(`Bắt đầu burst test với ${prompts.length} prompt`, 'info');
+
+      const allMediaIds = [];
+
+      for (let i = 0; i < prompts.length; i++) {
+        let p = prompts[i];
+        if (common) p = p + '. ' + common;
+
+        appendLog(`[#${i + 1}] Gửi /api/generate`, 'info');
+        try {
+          const res = await fetch('/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: p, aspectRatio: aspect })
+          });
+          const data = await res.json();
+          if (data.success) {
+            const mediaId = data.generationId || '(no generationId)';
+            allMediaIds.push(mediaId);
+
+            const card = document.createElement('div');
+            card.className = 'result-item';
+            card.innerHTML = `
+              <img src="${data.imageUrl}" alt="Image ${i + 1}">
+              <div class="result-body">
+                <div class="idx">Ảnh ${i + 1}</div>
+                <div style="font-size:0.75rem;color:#4b5563;margin-bottom:2px;">MediaID:</div>
+                <div style="font-size:0.7rem;word-break:break-all;">${mediaId}</div>
+              </div>
+            `;
+            resultsEl.appendChild(card);
+
+            appendLog(`[#${i + 1}] OK, mediaID = ${mediaId.substring(0, 24)}...`, 'success');
+          } else {
+            appendLog(`[#${i + 1}] Lỗi gen ảnh: ${data.error || 'Unknown'}`, 'error');
+          }
+        } catch (err) {
+          appendLog(`[#${i + 1}] Lỗi fetch /api/generate: ${err.message}`, 'error');
+        }
+      }
+
+      if (allMediaIds.length > 0) {
+        mediaOut.value = allMediaIds.join('\n');
+        burstStatus.textContent = `Hoàn thành: ${allMediaIds.length}/${prompts.length} ảnh có mediaID. Copy khối trên để dùng ở index3 (MediaID Input).`;
+      } else {
+        burstStatus.textContent = 'Không gen được ảnh nào thành công.';
+      }
+    }
+
+    // Init
+    (async function init() {
+      appendLog('Khởi động trang Index 4 (multi acc + proxy test)...', 'info');
+      await refreshTokenList();
+      try {
+        const res = await fetch('/api/token-pool-status');
+        const data = await res.json();
+        if (data.success && data.poolSize > 0) {
+          document.getElementById('tokenPoolStatus').textContent = `Đã có pool sẵn: ${data.tokens.join(', ')}`;
+          appendLog(`Server đang có token pool sẵn (${data.poolSize} token)`, 'info');
+        }
+      } catch (_) {}
+    })();
+  </script>
+</body>
+</html>
