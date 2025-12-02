@@ -1516,6 +1516,177 @@ app.get('/api/token-pool-status', (req, res) => {
   });
 });
 
+// ============================================================
+// LANE MANAGER ENDPOINTS - Manage tokens.xlsx directly
+// ============================================================
+
+// Save or update a lane in tokens.xlsx
+app.post('/api/lanes/save', async (req, res) => {
+  try {
+    const { lane, isEdit } = req.body;
+
+    if (!lane || !lane.name) {
+      return res.json({ success: false, error: 'Lane name is required' });
+    }
+
+    log(`💾 Saving lane: ${lane.name} (edit: ${isEdit})`);
+
+    // Read all lanes from file
+    let lanes = [];
+    try {
+      lanes = await readTokensFromFile();
+    } catch (err) {
+      lanes = [];
+    }
+
+    // Check if name already exists (for new lanes)
+    if (!isEdit) {
+      const exists = lanes.find(l => l.name === lane.name);
+      if (exists) {
+        return res.json({ success: false, error: `Lane "${lane.name}" already exists` });
+      }
+    }
+
+    // Update or add lane
+    const laneData = {
+      name: lane.name,
+      sessionToken: lane.sessionToken || '',
+      cookies: lane.cookies || '',
+      proxy: lane.proxy || '',
+      projectId: lane.projectId || '',
+      sceneId: lane.sceneId || '',
+      savedAt: new Date().toISOString()
+    };
+
+    if (isEdit) {
+      // Update existing lane
+      const index = lanes.findIndex(l => l.name === lane.name);
+      if (index >= 0) {
+        lanes[index] = laneData;
+        log(`✓ Updated lane: ${lane.name}`);
+      } else {
+        return res.json({ success: false, error: `Lane "${lane.name}" not found` });
+      }
+    } else {
+      // Add new lane
+      lanes.push(laneData);
+      log(`✓ Added new lane: ${lane.name}`);
+    }
+
+    // Write to xlsx
+    const worksheet = XLSX.utils.json_to_sheet(lanes);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Tokens');
+
+    // Set column widths
+    worksheet['!cols'] = [
+      { wch: 20 },  // name
+      { wch: 80 },  // sessionToken
+      { wch: 100 }, // cookies
+      { wch: 30 },  // proxy
+      { wch: 40 },  // projectId
+      { wch: 40 }   // sceneId
+    ];
+
+    XLSX.writeFile(workbook, TOKENS_XLSX_FILE);
+
+    // Also save to tokens.txt as backup (JSON format)
+    await fs.writeFile(TOKENS_FILE, JSON.stringify(lanes, null, 2), 'utf-8');
+
+    log(`✅ Lane "${lane.name}" saved successfully to tokens.xlsx`);
+    res.json({ success: true, message: `Lane "${lane.name}" saved successfully` });
+
+  } catch (error) {
+    log(`✗ Failed to save lane: ${error.message}`, 'error');
+    res.json({ success: false, error: error.message });
+  }
+});
+
+// Delete a lane from tokens.xlsx
+app.post('/api/lanes/delete', async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name) {
+      return res.json({ success: false, error: 'Lane name is required' });
+    }
+
+    log(`🗑️ Deleting lane: ${name}`);
+
+    // Read all lanes
+    let lanes = await readTokensFromFile();
+
+    // Find and remove lane
+    const index = lanes.findIndex(l => l.name === name);
+    if (index < 0) {
+      return res.json({ success: false, error: `Lane "${name}" not found` });
+    }
+
+    lanes.splice(index, 1);
+
+    // Write back to xlsx
+    const worksheet = XLSX.utils.json_to_sheet(lanes);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Tokens');
+
+    worksheet['!cols'] = [
+      { wch: 20 }, { wch: 80 }, { wch: 100 }, { wch: 30 }, { wch: 40 }, { wch: 40 }
+    ];
+
+    XLSX.writeFile(workbook, TOKENS_XLSX_FILE);
+
+    // Also update tokens.txt backup
+    await fs.writeFile(TOKENS_FILE, JSON.stringify(lanes, null, 2), 'utf-8');
+
+    log(`✅ Lane "${name}" deleted successfully`);
+    res.json({ success: true, message: `Lane "${name}" deleted successfully` });
+
+  } catch (error) {
+    log(`✗ Failed to delete lane: ${error.message}`, 'error');
+    res.json({ success: false, error: error.message });
+  }
+});
+
+// Capture token from current browser session
+app.get('/api/capture-token', async (req, res) => {
+  try {
+    log('🔑 Capturing token from browser session...');
+
+    // Try to get from current session
+    if (!session.sessionToken || !session.cookies) {
+      // Try to extract from Chrome if available
+      if (session.page) {
+        await extractCredentials();
+      } else {
+        return res.json({
+          success: false,
+          error: 'No active session. Please launch Chrome first or capture token manually.'
+        });
+      }
+    }
+
+    const capturedToken = {
+      sessionToken: session.sessionToken,
+      cookies: session.cookies,
+      capturedAt: new Date().toISOString()
+    };
+
+    log(`✅ Token captured successfully`);
+    res.json({
+      success: true,
+      token: capturedToken,
+      message: 'Token captured! You can now paste it into the form.'
+    });
+
+  } catch (error) {
+    log(`✗ Failed to capture token: ${error.message}`, 'error');
+    res.json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Profile management endpoints (similar to token management)
 const PROFILES_FILE = path.join(__dirname, 'profiles.txt');
 

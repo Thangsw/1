@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>⚙️ Lane Manager - Quản lý Luồng</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .header {
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 15px;
+      padding: 25px 30px;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .header h1 {
+      font-size: 2em;
+      color: #667eea;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .back-btn {
+      padding: 10px 20px;
+      background: #6b7280;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9em;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .back-btn:hover {
+      background: #4b5563;
+    }
+    .header p {
+      color: #6b7280;
+      font-size: 1em;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 450px;
+      gap: 20px;
+    }
+    .card {
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 15px;
+      padding: 25px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+    h2 {
+      font-size: 1.3em;
+      color: #667eea;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .lanes-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .lane-card {
+      background: #f9fafb;
+      border: 2px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 15px;
+      transition: all 0.2s;
+    }
+    .lane-card:hover {
+      border-color: #667eea;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+    }
+    .lane-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .lane-name {
+      font-size: 1.1em;
+      font-weight: 700;
+      color: #1f2937;
+    }
+    .lane-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .lane-info {
+      font-size: 0.85em;
+      color: #6b7280;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .lane-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 0.8em;
+      font-weight: 600;
+    }
+    .lane-tag.proxy {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    .lane-tag.no-proxy {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.85em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn.primary {
+      background: #667eea;
+      color: white;
+    }
+    .btn.primary:hover {
+      background: #5568d3;
+    }
+    .btn.secondary {
+      background: #6b7280;
+      color: white;
+    }
+    .btn.secondary:hover {
+      background: #4b5563;
+    }
+    .btn.danger {
+      background: #ef4444;
+      color: white;
+    }
+    .btn.danger:hover {
+      background: #dc2626;
+    }
+    .btn.small {
+      padding: 6px 12px;
+      font-size: 0.8em;
+    }
+    .input-group {
+      margin-bottom: 15px;
+    }
+    .input-group label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #374151;
+      font-size: 0.9em;
+    }
+    .input-group input,
+    .input-group textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 0.9em;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+    .input-group input:focus,
+    .input-group textarea:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    .input-group textarea {
+      resize: vertical;
+      min-height: 80px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85em;
+    }
+    .input-with-btn {
+      display: flex;
+      gap: 8px;
+    }
+    .input-with-btn input {
+      flex: 1;
+    }
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .alert {
+      padding: 12px 15px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      font-size: 0.9em;
+      display: none;
+    }
+    .alert.success {
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #6ee7b7;
+    }
+    .alert.error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fca5a5;
+    }
+    .alert.info {
+      background: #dbeafe;
+      color: #1e40af;
+      border: 1px solid #93c5fd;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #9ca3af;
+    }
+    .empty-state svg {
+      width: 80px;
+      height: 80px;
+      margin-bottom: 15px;
+      opacity: 0.5;
+    }
+    .form-hint {
+      font-size: 0.8em;
+      color: #6b7280;
+      margin-top: 4px;
+    }
+    @media (max-width: 1024px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-top">
+        <h1>⚙️ Lane Manager</h1>
+        <a href="index3.html" class="back-btn">← Về Index3</a>
+      </div>
+      <p>Quản lý luồng (lanes) - Thêm/sửa/xóa trực tiếp trong tokens.xlsx</p>
+    </div>
+
+    <div class="grid">
+      <!-- Left: Lanes List -->
+      <div class="card">
+        <h2>🎯 Danh sách Luồng</h2>
+
+        <div id="lanesContainer" class="lanes-list">
+          <div class="empty-state">
+            <div>📦</div>
+            <div>Đang tải danh sách lanes...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Add/Edit Form -->
+      <div class="card">
+        <h2 id="formTitle">➕ Thêm Lane Mới</h2>
+
+        <div id="alertBox" class="alert"></div>
+
+        <form id="laneForm">
+          <div class="input-group">
+            <label>Tên Lane *</label>
+            <input type="text" id="laneName" placeholder="Ví dụ: Tai, Long, Account1..." required>
+            <div class="form-hint">Tên duy nhất để nhận diện luồng</div>
+          </div>
+
+          <div class="input-group">
+            <label>Session Token *</label>
+            <div class="input-with-btn">
+              <textarea id="sessionToken" placeholder="eyJh..." rows="3" required></textarea>
+            </div>
+            <div class="form-hint">Token xác thực từ browser</div>
+          </div>
+
+          <div class="input-group">
+            <label>Cookies *</label>
+            <textarea id="cookies" placeholder="__Secure-next-auth.session-token=..." rows="3" required></textarea>
+            <div class="form-hint">Cookies từ browser (cùng session)</div>
+          </div>
+
+          <div class="input-group">
+            <label>
+              <button type="button" class="btn primary small" onclick="captureToken()">
+                🔑 Bắt Token Tự Động
+              </button>
+            </label>
+            <div class="form-hint">Click để tự động lấy token từ Chrome đang chạy</div>
+          </div>
+
+          <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;">
+
+          <div class="input-group">
+            <label>Proxy (tuỳ chọn)</label>
+            <input type="text" id="proxy" placeholder="1.52.195.100:41744:username:password">
+            <div class="form-hint">Format: ip:port:user:pass (để trống nếu không dùng proxy)</div>
+          </div>
+
+          <div class="input-group">
+            <label>Project ID (tuỳ chọn)</label>
+            <input type="text" id="projectId" placeholder="b188c71b-2e9f-4c05-8a3c-33b99e401b43">
+            <div class="form-hint">ID của project trong Google Labs Flow</div>
+          </div>
+
+          <div class="input-group">
+            <label>Scene ID (tuỳ chọn)</label>
+            <input type="text" id="sceneId" placeholder="c76c7714-2eaa-4b16-9967-4eb16e84677a">
+            <div class="form-hint">ID của scene trong project</div>
+          </div>
+
+          <div class="btn-group">
+            <button type="submit" class="btn primary" id="submitBtn">💾 Lưu Lane</button>
+            <button type="button" class="btn secondary" onclick="resetForm()">🔄 Reset</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentEditingLane = null;
+
+    // Load lanes on page load
+    async function loadLanes() {
+      try {
+        const res = await fetch('/api/list-tokens');
+        const data = await res.json();
+
+        const container = document.getElementById('lanesContainer');
+
+        if (!data.success || !data.tokens || data.tokens.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div>📦</div>
+              <div>Chưa có lane nào. Thêm lane đầu tiên!</div>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = '';
+        data.tokens.forEach(lane => {
+          const card = createLaneCard(lane);
+          container.appendChild(card);
+        });
+
+      } catch (err) {
+        showAlert('Lỗi load lanes: ' + err.message, 'error');
+      }
+    }
+
+    function createLaneCard(lane) {
+      const div = document.createElement('div');
+      div.className = 'lane-card';
+
+      const proxyTag = lane.hasProxy
+        ? `<span class="lane-tag proxy">🌐 Proxy</span>`
+        : `<span class="lane-tag no-proxy">🏠 Local</span>`;
+
+      div.innerHTML = `
+        <div class="lane-header">
+          <div class="lane-name">🎯 ${lane.name}</div>
+          <div class="lane-actions">
+            <button class="btn primary small" onclick="editLane('${lane.name}')">✏️ Sửa</button>
+            <button class="btn danger small" onclick="deleteLane('${lane.name}')">🗑️ Xóa</button>
+          </div>
+        </div>
+        <div class="lane-info">
+          <div>${proxyTag}</div>
+          ${lane.projectId ? `<div>📦 Project: ${lane.projectId.substring(0, 20)}...</div>` : ''}
+          ${lane.savedAt ? `<div>🕒 Saved: ${new Date(lane.savedAt).toLocaleString('vi-VN')}</div>` : ''}
+        </div>
+      `;
+
+      return div;
+    }
+
+    // Edit lane
+    async function editLane(name) {
+      try {
+        // Fetch full lane data
+        const res = await fetch('/api/list-tokens');
+        const data = await res.json();
+        const lane = data.tokens.find(l => l.name === name);
+
+        if (!lane) {
+          showAlert('Lane not found', 'error');
+          return;
+        }
+
+        // Fetch full details from tokens.xlsx
+        const fullRes = await fetch('/api/list-tokens');
+        const fullData = await fullRes.json();
+        const fullLane = fullData.tokens.find(l => l.name === name);
+
+        // Set form to edit mode
+        currentEditingLane = name;
+        document.getElementById('formTitle').textContent = `✏️ Sửa Lane: ${name}`;
+
+        // Fill form
+        document.getElementById('laneName').value = name;
+        document.getElementById('laneName').disabled = true; // Can't change name when editing
+
+        // We need to fetch sessionToken and cookies from the actual file
+        // For now, just show placeholders
+        document.getElementById('sessionToken').placeholder = 'Token hiện tại (để trống nếu không đổi)';
+        document.getElementById('cookies').placeholder = 'Cookies hiện tại (để trống nếu không đổi)';
+
+        document.getElementById('proxy').value = lane.proxy || '';
+        document.getElementById('projectId').value = lane.projectId || '';
+        document.getElementById('sceneId').value = lane.sceneId || '';
+
+        document.getElementById('submitBtn').textContent = '💾 Cập nhật Lane';
+
+        // Scroll to form
+        document.querySelector('.card:last-child').scrollIntoView({ behavior: 'smooth' });
+
+      } catch (err) {
+        showAlert('Lỗi: ' + err.message, 'error');
+      }
+    }
+
+    // Delete lane
+    async function deleteLane(name) {
+      if (!confirm(`Bạn chắc chắn muốn xóa lane "${name}"?`)) {
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/lanes/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          showAlert(`✅ ${data.message}`, 'success');
+          await loadLanes();
+        } else {
+          showAlert(`❌ ${data.error}`, 'error');
+        }
+
+      } catch (err) {
+        showAlert('Lỗi: ' + err.message, 'error');
+      }
+    }
+
+    // Capture token automatically
+    async function captureToken() {
+      try {
+        showAlert('🔑 Đang bắt token...', 'info');
+
+        const res = await fetch('/api/capture-token');
+        const data = await res.json();
+
+        if (data.success) {
+          // Fill form with captured token
+          document.getElementById('sessionToken').value = data.token.sessionToken;
+          document.getElementById('cookies').value = data.token.cookies;
+
+          // Copy to clipboard
+          const textToCopy = `sessionToken: ${data.token.sessionToken}\n\ncookies: ${data.token.cookies}`;
+          await navigator.clipboard.writeText(textToCopy);
+
+          showAlert('✅ Đã bắt token và copy vào clipboard!', 'success');
+        } else {
+          showAlert(`❌ ${data.error}`, 'error');
+        }
+
+      } catch (err) {
+        showAlert('Lỗi: ' + err.message, 'error');
+      }
+    }
+
+    // Submit form (save/update lane)
+    document.getElementById('laneForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const lane = {
+        name: document.getElementById('laneName').value.trim(),
+        sessionToken: document.getElementById('sessionToken').value.trim(),
+        cookies: document.getElementById('cookies').value.trim(),
+        proxy: document.getElementById('proxy').value.trim(),
+        projectId: document.getElementById('projectId').value.trim(),
+        sceneId: document.getElementById('sceneId').value.trim()
+      };
+
+      if (!lane.name || !lane.sessionToken || !lane.cookies) {
+        showAlert('Vui lòng điền đầy đủ: Tên, Session Token, và Cookies', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/lanes/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lane,
+            isEdit: !!currentEditingLane
+          })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          showAlert(`✅ ${data.message}`, 'success');
+          resetForm();
+          await loadLanes();
+        } else {
+          showAlert(`❌ ${data.error}`, 'error');
+        }
+
+      } catch (err) {
+        showAlert('Lỗi: ' + err.message, 'error');
+      }
+    });
+
+    function resetForm() {
+      document.getElementById('laneForm').reset();
+      document.getElementById('laneName').disabled = false;
+      document.getElementById('formTitle').textContent = '➕ Thêm Lane Mới';
+      document.getElementById('submitBtn').textContent = '💾 Lưu Lane';
+      document.getElementById('sessionToken').placeholder = 'eyJh...';
+      document.getElementById('cookies').placeholder = '__Secure-next-auth.session-token=...';
+      currentEditingLane = null;
+      hideAlert();
+    }
+
+    function showAlert(message, type) {
+      const alert = document.getElementById('alertBox');
+      alert.textContent = message;
+      alert.className = `alert ${type}`;
+      alert.style.display = 'block';
+
+      if (type === 'success') {
+        setTimeout(hideAlert, 5000);
+      }
+    }
+
+    function hideAlert() {
+      document.getElementById('alertBox').style.display = 'none';
+    }
+
+    // Init
+    loadLanes();
+  </script>
+</body>
+</html>
