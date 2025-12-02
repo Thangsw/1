@@ -3004,7 +3004,8 @@ Camera zoom in - out nhẹ nhàng"></textarea>
               endImageMediaId: mediaId2,
               prompt: cleanPrompt,
               aspectRatio: state.aspectRatio.replace('IMAGE_', 'VIDEO_'),
-              seeds: seeds
+              seeds: seeds,
+              tokenName: selectedTokenName  // CRITICAL: Multi-lane support
             })
           });
 
@@ -3709,7 +3710,8 @@ Camera zoom in - out nhẹ nhàng"></textarea>
             endImageMediaId: mediaId2,
             prompt: prompt,
             aspectRatio: state.aspectRatio.replace('IMAGE_', 'VIDEO_'),
-            seeds: [seed]
+            seeds: [seed],
+            tokenName: selectedTokenName  // CRITICAL: Multi-lane support
           })
         });
 
