@@ -2975,13 +2975,13 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
         sessionId: sessionId,
         projectId,
         tool: 'PINHOLE',
-        userPaygateTier: 'PAYGATE_TIER_TWO'
+        userPaygateTier: 'PAYGATE_TIER_ONE'  // FIXED: Use TIER_ONE to match Google Flow UI
       },
       requests: seedsArray.map(seed => ({
         aspectRatio,
         seed,
         textInput: { prompt },
-        videoModelKey: 'veo_3_1_i2v_s_fast_ultra_fl',
+        videoModelKey: 'veo_3_1_i2v_s_fast_fl',  // FIXED: Remove 'ultra' from model name
         startImage: { mediaId: startImageMediaId },
         endImage: { mediaId: endImageMediaId },
         metadata: { sceneId }
