@@ -270,6 +270,14 @@
             <option value="VIDEO_ASPECT_RATIO_SQUARE">Square (1:1)</option>
           </select>
         </div>
+        <div class="input-group">
+          <label>Project ID</label>
+          <input id="projectId" placeholder="Paste project ID hoặc full link...">
+        </div>
+        <div class="input-group">
+          <label>Scene ID</label>
+          <input id="sceneId" placeholder="Scene ID (optional)">
+        </div>
         <div style="margin-top:8px;">
           <button class="btn" id="testBtn" onclick="runMultiLaneVideoTest()">🚀 TEST ĐA LUỒNG</button>
         </div>
@@ -394,6 +402,8 @@
       const image1 = document.getElementById('image1').value.trim();
       const image2 = document.getElementById('image2').value.trim();
       const aspectRatio = document.getElementById('videoAspect').value;
+      let projectIdInput = document.getElementById('projectId').value.trim();
+      let sceneIdInput = document.getElementById('sceneId').value.trim();
       const testBtn = document.getElementById('testBtn');
       const testStatus = document.getElementById('testStatus');
 
@@ -404,6 +414,23 @@
 
       if (!prompt || !image1 || !image2) {
         alert('Nhập đầy đủ prompt và 2 mediaId ảnh!');
+        return;
+      }
+
+      // Parse projectId/sceneId from URL if needed
+      let projectId = projectIdInput;
+      let sceneId = sceneIdInput;
+
+      if (projectIdInput && projectIdInput.includes('labs.google')) {
+        const projectMatch = projectIdInput.match(/\/project\/([a-f0-9-]{36})/i);
+        const sceneMatch = projectIdInput.match(/\/scenes?\/([a-f0-9-]{36})/i);
+        if (projectMatch) projectId = projectMatch[1];
+        if (sceneMatch) sceneId = sceneMatch[1];
+        appendLog(`📋 Parsed: projectId=${projectId?.substring(0,20)}..., sceneId=${sceneId?.substring(0,20)}...`, 'info');
+      }
+
+      if (!projectId) {
+        alert('Vui lòng nhập Project ID!');
         return;
       }
 
@@ -419,7 +446,7 @@
 
       // Run all lanes in parallel
       const promises = selectedLanes.map(laneName =>
-        generateVideoForLane(laneName, prompt, image1, image2, aspectRatio)
+        generateVideoForLane(laneName, prompt, image1, image2, aspectRatio, projectId, sceneId)
       );
 
       try {
@@ -444,7 +471,7 @@
       }
     }
 
-    async function generateVideoForLane(laneName, prompt, img1, img2, aspectRatio) {
+    async function generateVideoForLane(laneName, prompt, img1, img2, aspectRatio, projectId, sceneId) {
       appendLog(`🎬 [${laneName}] Bắt đầu gen video...`, 'info');
 
       // Set initial status
@@ -452,12 +479,14 @@
       updateVideoResultsUI();
 
       try {
-        // Call generate-start-end with tokenName
+        // Call generate-start-end with tokenName, projectId, sceneId
         const genRes = await fetch('/api/veo3/generate-start-end', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             tokenName: laneName,
+            projectId: projectId,
+            sceneId: sceneId,
             prompt,
             startImageMediaId: img1,
             endImageMediaId: img2,
