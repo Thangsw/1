@@ -2935,21 +2935,26 @@ app.post('/api/veo3/upload-cropped-image', async (req, res) => {
 // CRITICAL: Now supports multi-lane (tokenName parameter for multi-account + proxy)
 app.post('/api/veo3/generate-start-end', async (req, res) => {
   try {
-    const { projectId, sceneId, startImageMediaId, endImageMediaId, prompt, aspectRatio, seeds, tokenName } = req.body;
+    const { projectId: reqProjectId, sceneId: reqSceneId, startImageMediaId, endImageMediaId, prompt, aspectRatio, seeds, tokenName } = req.body;
+
+    // Get token from pool by name (for multi-lane support)
+    const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
+    const laneName = tokenObj.name || 'default';
+
+    // CRITICAL: Use projectId/sceneId from tokenObj (lane data) if not provided in request
+    const projectId = reqProjectId || tokenObj.projectId;
+    const sceneId = reqSceneId || tokenObj.sceneId;
 
     // DEBUG: Log received parameters
     log(`📥 [DEBUG] Received generate-start-end request:`);
-    log(`   projectId: ${projectId}`);
-    log(`   sceneId: ${sceneId}`);
+    log(`   Lane: ${laneName}`);
+    log(`   projectId: ${projectId} ${reqProjectId ? '(from request)' : '(from lane)'}`);
+    log(`   sceneId: ${sceneId} ${reqSceneId ? '(from request)' : '(from lane)'}`);
     log(`   startImageMediaId: ${startImageMediaId ? startImageMediaId.substring(0, 30) + '...' : 'MISSING'}`);
     log(`   endImageMediaId: ${endImageMediaId ? endImageMediaId.substring(0, 30) + '...' : 'MISSING'}`);
     log(`   prompt: ${prompt}`);
     log(`   aspectRatio: ${aspectRatio}`);
     log(`   seeds: ${JSON.stringify(seeds)}`);
-
-    // Get token from pool by name (for multi-lane support)
-    const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
-    const laneName = tokenObj.name || 'default';
 
     log(`🎬 [Lane: ${laneName}] Generating start-end video: "${prompt.substring(0, 50)}..."`);
 
