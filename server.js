@@ -2937,6 +2937,16 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
   try {
     const { projectId, sceneId, startImageMediaId, endImageMediaId, prompt, aspectRatio, seeds, tokenName } = req.body;
 
+    // DEBUG: Log received parameters
+    log(`📥 [DEBUG] Received generate-start-end request:`);
+    log(`   projectId: ${projectId}`);
+    log(`   sceneId: ${sceneId}`);
+    log(`   startImageMediaId: ${startImageMediaId ? startImageMediaId.substring(0, 30) + '...' : 'MISSING'}`);
+    log(`   endImageMediaId: ${endImageMediaId ? endImageMediaId.substring(0, 30) + '...' : 'MISSING'}`);
+    log(`   prompt: ${prompt}`);
+    log(`   aspectRatio: ${aspectRatio}`);
+    log(`   seeds: ${JSON.stringify(seeds)}`);
+
     // Get token from pool by name (for multi-lane support)
     const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
     const laneName = tokenObj.name || 'default';
@@ -2960,26 +2970,33 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
 
     const seedsArray = seeds || [Math.floor(Math.random() * 65536), Math.floor(Math.random() * 65536)];
 
+    const requestPayload = {
+      clientContext: {
+        sessionId: sessionId,
+        projectId,
+        tool: 'PINHOLE',
+        userPaygateTier: 'PAYGATE_TIER_TWO'
+      },
+      requests: seedsArray.map(seed => ({
+        aspectRatio,
+        seed,
+        textInput: { prompt },
+        videoModelKey: 'veo_3_1_i2v_s_fast_ultra_fl',
+        startImage: { mediaId: startImageMediaId },
+        endImage: { mediaId: endImageMediaId },
+        metadata: { sceneId }
+      }))
+    };
+
+    // DEBUG: Log payload being sent to Google API
+    log(`📤 [DEBUG] Sending to Google API:`, 'info');
+    log(`   URL: https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoStartAndEndImage`);
+    log(`   Payload: ${JSON.stringify(requestPayload, null, 2).substring(0, 500)}...`);
+
     const response = await axiosWithRetry({
       method: 'POST',
       url: 'https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoStartAndEndImage',
-      data: {
-        clientContext: {
-          sessionId: sessionId,
-          projectId,
-          tool: 'PINHOLE',
-          userPaygateTier: 'PAYGATE_TIER_TWO'
-        },
-        requests: seedsArray.map(seed => ({
-          aspectRatio,
-          seed,
-          textInput: { prompt },
-          videoModelKey: 'veo_3_1_i2v_s_fast_ultra_fl',
-          startImage: { mediaId: startImageMediaId },
-          endImage: { mediaId: endImageMediaId },
-          metadata: { sceneId }
-        }))
-      },
+      data: requestPayload,
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'text/plain;charset=UTF-8',
