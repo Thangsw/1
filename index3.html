@@ -1651,7 +1651,7 @@ Camera zoom in - out nhẹ nhàng"></textarea>
     // ============================================
     // CHROME & TOKEN MANAGEMENT
     // ============================================
-    let selectedProfile = '';  // Track selected profile
+    // Removed: selectedProfile variable (not needed for temp session)
 
     // Lưu 1 profile thống nhất: Chrome profile + Token + Proxy + Project ID
     async function saveUnifiedProfile() {
@@ -1762,53 +1762,14 @@ Camera zoom in - out nhẹ nhàng"></textarea>
       }
     }
 
-    async function loadProfileList() {
-      try {
-        const res = await fetch('/api/list-profiles');
-        const data = await res.json();
-        if (data.success) {
-          const selector = document.getElementById('profileSelector');
-
-          // Always keep first option as "default (profile trắng)" to match label "trống = default"
-          selector.innerHTML = '';
-          const defaultOption = document.createElement('option');
-          defaultOption.value = '';
-          defaultOption.textContent = '-- default (profile trắng) --';
-          selector.appendChild(defaultOption);
-
-          // Append saved profiles (excluding "default" to avoid duplicate label)
-          data.profiles.forEach(profile => {
-            if (profile === 'default') return;
-            const option = document.createElement('option');
-            option.value = profile;
-            option.textContent = profile;
-            selector.appendChild(option);
-          });
-
-          log(`📋 Loaded ${data.profiles.length} profiles`, 'info');
-        }
-      } catch (err) {
-        log('❌ Lỗi load danh sách profiles: ' + err.message, 'error');
-      }
-    }
-
-    function updateSelectedProfile() {
-      selectedProfile = document.getElementById('profileSelector').value;
-      if (selectedProfile) {
-        log(`📌 Đã chọn profile: "${selectedProfile}"`, 'info');
-      }
-    }
+    // Removed: loadProfileList() - not needed for temp session
+    // Removed: updateSelectedProfile() - not needed for temp session
 
     async function launchChrome() {
-      let profile = selectedProfile || document.getElementById('profileSelector').value;
+      // Temp session always uses default profile
+      const profile = 'default';
 
-      // Nếu không chọn gì thì dùng profile mặc định "default"
-      if (!profile) {
-        profile = 'default';
-        log('ℹ️ Không chọn profile, dùng profile mặc định "default"', 'info');
-      }
-
-      log(`🚀 Đang khởi động Chrome với profile: "${profile}"...`, 'info');
+      log(`🚀 Đang khởi động Chrome với profile mặc định...`, 'info');
       try {
         const res = await fetch('/api/launch-chrome', {
           method: 'POST',
@@ -2237,23 +2198,7 @@ Camera zoom in - out nhẹ nhàng"></textarea>
       }
     }
 
-    function updateSelectedToken() {
-      selectedTokenName = document.getElementById('tokenSelector').value;
-      if (selectedTokenName) {
-        log(`✅ Đã chọn token: "${selectedTokenName}"`, 'info');
-
-        // Đồng bộ luôn Chrome profile cùng tên để Khởi động Chrome dùng đúng profile
-        const profileSelect = document.getElementById('profileSelector');
-        if (profileSelect) {
-          const match = Array.from(profileSelect.options).find(opt => opt.value === selectedTokenName);
-          if (match) {
-            profileSelect.value = selectedTokenName;
-          }
-        }
-        selectedProfile = selectedTokenName;
-        log('🔗 Chrome profile sẽ dùng cùng tên với token đã chọn', 'info');
-      }
-    }
+    // Removed: updateSelectedToken() - not needed for temp session
 
     async function openFlowTab() {
       log('🎬 Đang mở Flow tab...', 'info');
