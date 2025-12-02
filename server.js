@@ -83,6 +83,54 @@ function getNextToken() {
   return token;
 }
 
+// CRITICAL: Get token by name from pool (for multi-lane video generation)
+function getTokenByName(tokenName) {
+  if (!tokenName) {
+    return getNextToken(); // Fallback to round-robin if no name specified
+  }
+
+  const token = tokenPool.find(t => t.name === tokenName);
+  if (!token) {
+    log(`⚠️ Token "${tokenName}" not found in pool, using next available token`, 'warning');
+    return getNextToken();
+  }
+
+  return token;
+}
+
+// Helper: Read tokens from tokens.xlsx (or fallback to tokens.txt)
+async function readTokensFromFile() {
+  try {
+    // Try tokens.xlsx first
+    if (fsSync.existsSync(TOKENS_XLSX_FILE)) {
+      log('📊 Reading tokens from tokens.xlsx');
+      const workbook = XLSX.readFile(TOKENS_XLSX_FILE);
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const tokens = XLSX.utils.sheet_to_json(sheet);
+
+      // Normalize: convert empty strings to null/undefined
+      return tokens.map(t => ({
+        name: t.name || 'unnamed',
+        sessionToken: t.sessionToken || '',
+        cookies: t.cookies || '',
+        proxy: t.proxy || null,
+        projectId: t.projectId || null,
+        sceneId: t.sceneId || null,
+        savedAt: t.savedAt || new Date().toISOString()
+      }));
+    }
+
+    // Fallback to tokens.txt
+    log('📄 Fallback: Reading tokens from tokens.txt');
+    const content = await fs.readFile(TOKENS_FILE, 'utf-8');
+    return JSON.parse(content);
+  } catch (error) {
+    log(`❌ Failed to read tokens file: ${error.message}`, 'error');
+    throw error;
+  }
+}
+
 // Conversation history for context
 let conversationHistory = [];
 
@@ -1220,19 +1268,20 @@ app.post('/api/load-credentials', async (req, res) => {
 
 app.get('/api/list-tokens', async (req, res) => {
   try {
-    // Read tokens.txt
-    const content = await fs.readFile(TOKENS_FILE, 'utf-8');
-    const tokens = JSON.parse(content);
+    // Read tokens from xlsx or txt
+    const tokens = await readTokensFromFile();
 
-    // Return full token info (name + proxy status)
+    // Return full token info (name + proxy status + project/scene)
     const tokenList = tokens.map(t => ({
       name: t.name,
       hasProxy: !!t.proxy,
       proxy: t.proxy ? `${t.proxy.split(':')[0]}:${t.proxy.split(':')[1]}` : null,
+      projectId: t.projectId || null,
+      sceneId: t.sceneId || null,
       savedAt: t.savedAt
     }));
 
-    log(`✓ Found ${tokenList.length} saved tokens in tokens.txt`);
+    log(`✓ Found ${tokenList.length} saved tokens (lanes)`);
     res.json({
       success: true,
       tokens: tokenList
@@ -1391,9 +1440,8 @@ app.post('/api/load-token-pool', async (req, res) => {
       return res.json({ success: false, error: 'Token names array is required' });
     }
 
-    // Read all tokens from file
-    const content = await fs.readFile(TOKENS_FILE, 'utf-8');
-    const allTokens = JSON.parse(content);
+    // Read all tokens from file (xlsx or txt)
+    const allTokens = await readTokensFromFile();
 
     // Filter tokens by requested names
     tokenPool = [];
@@ -2550,13 +2598,18 @@ app.post('/api/veo3/submit-batch-log', async (req, res) => {
 });
 
 // Upload raw image (step 1 of 2)
+// Upload raw image (step 1 of 2) - CRITICAL: Now supports multi-lane
 app.post('/api/veo3/upload-raw-image', async (req, res) => {
   try {
-    const { rawImageBytes, aspectRatio } = req.body;
+    const { rawImageBytes, aspectRatio, tokenName } = req.body;
 
-    log('Uploading raw image to Veo3 (step 1/2)...');
+    // Get token from pool by name (for multi-lane support)
+    const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
+    const laneName = tokenObj.name || 'default';
 
-    const token = await getAccessToken();
+    log(`📤 [Lane: ${laneName}] Uploading raw image to Veo3 (step 1/2)...`);
+
+    const token = await getAccessToken(false, tokenObj);
 
     // Generate sessionId
     const sessionId = generateSessionId();
@@ -2570,8 +2623,7 @@ app.post('/api/veo3/upload-raw-image', async (req, res) => {
     log(`Aspect ratio: ${aspectRatio} -> ${imageAspectRatio}`);
 
     // Upload raw image qua v1:uploadUserImage - ĐÚNG CẤU TRÚC API
-    const accountName = session.currentAccountName || 'default';
-    const proxyString = session.currentProxy || null;
+    const proxyString = tokenObj.proxy; // CRITICAL: Use proxy from tokenObj
 
     const uploadResponse = await axiosWithRetry({
       method: 'POST',
@@ -2593,14 +2645,14 @@ app.post('/api/veo3/upload-raw-image', async (req, res) => {
         'Content-Type': 'application/json',
         'Referer': 'https://labs.google/fx/tools/flow'
       }
-    }, 0, 5, accountName, proxyString);
+    }, 0, 5, laneName, proxyString);
 
     // Extract mediaGenerationId from response
     const mediaGenerationId = uploadResponse.data?.mediaGenerationId?.mediaGenerationId;
     const width = uploadResponse.data?.width;
     const height = uploadResponse.data?.height;
 
-    log(`✓ Raw image uploaded (step 1/2) - mediaGenerationId: ${mediaGenerationId?.substring(0, 30)}...`);
+    log(`✅ [Lane: ${laneName}] Raw image uploaded (step 1/2) - mediaGenerationId: ${mediaGenerationId?.substring(0, 30)}...`);
     res.json({
       success: true,
       data: uploadResponse.data,
@@ -2618,13 +2670,18 @@ app.post('/api/veo3/upload-raw-image', async (req, res) => {
 });
 
 // Upload cropped image và lấy mediaId (step 2 of 2)
+// CRITICAL: Now supports multi-lane (tokenName parameter for multi-account + proxy)
 app.post('/api/veo3/upload-cropped-image', async (req, res) => {
   try {
-    const { imageBase64, aspectRatio } = req.body;
+    const { imageBase64, aspectRatio, tokenName } = req.body;
 
-    log('Uploading cropped image to Veo3 (step 2/2)...');
+    // Get token from pool by name (for multi-lane support)
+    const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
+    const laneName = tokenObj.name || 'default';
 
-    const token = await getAccessToken();
+    log(`📤 [Lane: ${laneName}] Uploading cropped image to Veo3 (step 2/2)...`);
+
+    const token = await getAccessToken(false, tokenObj);
 
     // Generate sessionId
     const sessionId = generateSessionId();
@@ -2644,8 +2701,7 @@ app.post('/api/veo3/upload-cropped-image', async (req, res) => {
     log(`Aspect ratio: ${aspectRatio} -> ${imageAspectRatio}`);
 
     // Upload cropped image qua CÙNG endpoint v1:uploadUserImage
-    const accountName = session.currentAccountName || 'default';
-    const proxyString = session.currentProxy || null;
+    const proxyString = tokenObj.proxy; // CRITICAL: Use proxy from tokenObj
 
     const uploadResponse = await axiosWithRetry({
       method: 'POST',
@@ -2667,13 +2723,13 @@ app.post('/api/veo3/upload-cropped-image', async (req, res) => {
         'Content-Type': 'application/json',
         'Referer': 'https://labs.google/fx/tools/flow'
       }
-    }, 0, 5, accountName, proxyString);
+    }, 0, 5, laneName, proxyString);
 
     // Extract mediaGenerationId from response
     const mediaGenerationId = uploadResponse.data?.mediaGenerationId?.mediaGenerationId;
     const mediaId = mediaGenerationId; // This is the mediaId to use for video generation
 
-    log(`✓ Cropped image uploaded (step 2/2) - mediaId: ${mediaId?.substring(0, 30)}...`);
+    log(`✅ [Lane: ${laneName}] Cropped image uploaded (step 2/2) - mediaId: ${mediaId?.substring(0, 30)}...`);
 
     res.json({ success: true, mediaId });
   } catch (err) {
@@ -2686,17 +2742,21 @@ app.post('/api/veo3/upload-cropped-image', async (req, res) => {
 });
 
 // Generate video from 2 images (start + end)
+// CRITICAL: Now supports multi-lane (tokenName parameter for multi-account + proxy)
 app.post('/api/veo3/generate-start-end', async (req, res) => {
   try {
-    const { projectId, sceneId, startImageMediaId, endImageMediaId, prompt, aspectRatio, seeds } = req.body;
+    const { projectId, sceneId, startImageMediaId, endImageMediaId, prompt, aspectRatio, seeds, tokenName } = req.body;
 
-    log(`Generating start-end video: "${prompt.substring(0, 50)}..."`);
+    // Get token from pool by name (for multi-lane support)
+    const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
+    const laneName = tokenObj.name || 'default';
+
+    log(`🎬 [Lane: ${laneName}] Generating start-end video: "${prompt.substring(0, 50)}..."`);
 
     // FORCE refresh access token for Veo3 video calls (avoid using stale token cache)
-    const token = await getAccessToken(true);
+    const token = await getAccessToken(true, tokenObj);
 
-    const accountName = session.currentAccountName || 'default';
-    const proxyString = null; // IMPORTANT: do NOT use proxy for Veo3 video endpoint (must match browser call)
+    const proxyString = tokenObj.proxy; // CRITICAL: Use proxy from tokenObj for multi-lane
 
     // Generate unique IDs for logs
     const sessionId = generateSessionId();
@@ -2740,7 +2800,7 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
         'Accept-Language': 'en-US,en;q=0.9',
         'x-client-data': 'CIqUywE='
       }
-    }, 0, 5, accountName, proxyString);
+    }, 0, 5, laneName, proxyString);
 
     const operations = response.data.operations.map(op => ({
       operation: { name: op.operation.name },
@@ -2748,7 +2808,7 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
       status: op.status
     }));
 
-    log(`✓ Start-end video generation started! ${operations.length} variants`);
+    log(`✅ [Lane: ${laneName}] Start-end video generation started! ${operations.length} variants`);
     res.json({ success: true, operations });
   } catch (err) {
     log(`✗ Generate start-end video failed: ${err.message}`, 'error');
@@ -2767,13 +2827,18 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
 // OLD ENDPOINT - REMOVED (duplicate, causes conflicts)
 
 // Generate video from text only (text-to-video)
+// CRITICAL: Now supports multi-lane (tokenName parameter for multi-account + proxy)
 app.post('/api/veo3/generate-text', async (req, res) => {
   try {
-    const { clientContext, requests } = req.body;
+    const { clientContext, requests, tokenName } = req.body;
 
-    log(`Generating text-to-video: ${requests.length} requests`);
+    // Get token from pool by name (for multi-lane support)
+    const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
+    const laneName = tokenObj.name || 'default';
 
-    const token = await getAccessToken();
+    log(`🎬 [Lane: ${laneName}] Generating text-to-video: ${requests.length} requests`);
+
+    const token = await getAccessToken(false, tokenObj);
 
     // Ensure sessionId in clientContext
     const sessionId = generateSessionId();
@@ -2787,23 +2852,23 @@ app.post('/api/veo3/generate-text', async (req, res) => {
       userPaygateTier: 'PAYGATE_TIER_TWO'
     };
 
-    const response = await axios.post(
-      'https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoText',
-      {
+    // CRITICAL: Use axiosWithRetry with proxy support
+    const response = await axiosWithRetry({
+      method: 'POST',
+      url: 'https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoText',
+      data: {
         clientContext: finalClientContext,
         requests
       },
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'text/plain;charset=UTF-8',
-          'Referer': 'https://labs.google/',
-          'x-browser-channel': 'stable',
-          'x-browser-year': '2025',
-          'x-client-data': 'CIyIywE='
-        }
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'text/plain;charset=UTF-8',
+        'Referer': 'https://labs.google/',
+        'x-browser-channel': 'stable',
+        'x-browser-year': '2025',
+        'x-client-data': 'CIyIywE='
       }
-    );
+    }, 0, 5, laneName, tokenObj.proxy);
 
     const operations = response.data.operations.map(op => ({
       operation: { name: op.operation.name },
@@ -2811,10 +2876,10 @@ app.post('/api/veo3/generate-text', async (req, res) => {
       status: op.status
     }));
 
-    log(`✓ Text-to-video generation started! ${operations.length} variants`);
+    log(`✅ [Lane: ${laneName}] Text-to-video generation started! ${operations.length} variants`);
     res.json({ success: true, operations });
   } catch (err) {
-    log(`✗ Generate text-to-video failed: ${err.message}`, 'error');
+    log(`❌ Generate text-to-video failed: ${err.message}`, 'error');
     res.json({ success: false, error: err.message });
   }
 });
@@ -3023,26 +3088,31 @@ app.post('/api/veo3/generate-reference-video', async (req, res) => {
 });
 
 // Check video generation status
+// CRITICAL: Now supports multi-lane (tokenName parameter for multi-account + proxy)
 app.post('/api/veo3/check-status', async (req, res) => {
   try {
-    const { operations } = req.body;
+    const { operations, tokenName } = req.body;
 
-    const token = await getAccessToken();
+    // Get token from pool by name (CRITICAL: must use same lane as generation!)
+    const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
+    const laneName = tokenObj.name || 'default';
 
-    const response = await axios.post(
-      'https://aisandbox-pa.googleapis.com/v1/video:batchCheckAsyncVideoGenerationStatus',
-      { operations },
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'text/plain;charset=UTF-8',
-          'Referer': 'https://labs.google/',
-          'x-browser-channel': 'stable',
-          'x-browser-year': '2025',
-          'x-client-data': 'CIyIywE='
-        }
+    const token = await getAccessToken(false, tokenObj);
+
+    // CRITICAL: Use axiosWithRetry with proxy support
+    const response = await axiosWithRetry({
+      method: 'POST',
+      url: 'https://aisandbox-pa.googleapis.com/v1/video:batchCheckAsyncVideoGenerationStatus',
+      data: { operations },
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'text/plain;charset=UTF-8',
+        'Referer': 'https://labs.google/',
+        'x-browser-channel': 'stable',
+        'x-browser-year': '2025',
+        'x-client-data': 'CIyIywE='
       }
-    );
+    }, 0, 5, laneName, tokenObj.proxy);
 
     // Parse operations and extract fifeUrl if SUCCESSFUL
     const parsedOps = response.data.operations.map(op => {

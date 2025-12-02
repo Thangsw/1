@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <title>Whisk Multi-Acc Proxy Test (Index 4)</title>
+  <title>Index 4 - Test Đa Luồng Veo3 Video</title>
   <style>
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -11,7 +11,7 @@
       padding: 0;
     }
     .container {
-      max-width: 1200px;
+      max-width: 1400px;
       margin: 0 auto;
       padding: 16px;
     }
@@ -24,31 +24,31 @@
     }
     .header h1 {
       margin: 0 0 4px;
-      font-size: 1.4rem;
+      font-size: 1.6rem;
     }
     .header p {
       margin: 0;
-      font-size: 0.9rem;
+      font-size: 0.95rem;
       opacity: 0.9;
     }
     .grid {
       display: grid;
-      grid-template-columns: 320px 1fr;
+      grid-template-columns: 380px 1fr;
       gap: 16px;
     }
     .card {
       background: #fff;
       border-radius: 10px;
-      padding: 14px;
+      padding: 16px;
       box-shadow: 0 1px 4px rgba(0,0,0,0.08);
     }
     h2 {
-      font-size: 1rem;
-      margin: 0 0 10px;
+      font-size: 1.1rem;
+      margin: 0 0 12px;
       color: #4f46e5;
     }
     .input-group {
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
     .input-group label {
       font-size: 0.85rem;
@@ -59,14 +59,13 @@
     }
     input, textarea, select {
       width: 100%;
-      padding: 6px 8px;
+      padding: 8px 10px;
       border-radius: 6px;
       border: 1px solid #d1d5db;
       font-size: 0.85rem;
       box-sizing: border-box;
     }
     textarea {
-      min-height: 80px;
       resize: vertical;
       font-family: 'Courier New', monospace;
     }
@@ -74,111 +73,151 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 6px 10px;
+      padding: 8px 12px;
       border-radius: 6px;
       border: none;
-      font-size: 0.85rem;
+      font-size: 0.9rem;
       font-weight: 600;
       cursor: pointer;
       background: #4f46e5;
       color: #fff;
-      margin-right: 6px;
-      margin-bottom: 6px;
+      margin-right: 8px;
+      margin-bottom: 8px;
+    }
+    .btn:hover {
+      background: #4338ca;
     }
     .btn.secondary {
       background: #6b7280;
     }
-    .btn.small {
-      font-size: 0.8rem;
-      padding: 4px 8px;
+    .btn.secondary:hover {
+      background: #4b5563;
     }
-    .token-pool-list {
-      max-height: 180px;
+    .btn.danger {
+      background: #dc2626;
+    }
+    .btn:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+    .lane-pool-list {
+      max-height: 250px;
       overflow-y: auto;
       border: 1px solid #e5e7eb;
       border-radius: 6px;
-      padding: 6px;
-      font-size: 0.8rem;
+      padding: 8px;
+      font-size: 0.85rem;
       background: #f9fafb;
     }
-    .token-item {
+    .lane-item {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      padding: 3px 2px;
-      gap: 6px;
+      padding: 6px 4px;
+      border-bottom: 1px solid #e5e7eb;
+      gap: 8px;
     }
-    .token-item label {
+    .lane-item:last-child {
+      border-bottom: none;
+    }
+    .lane-item label {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
       cursor: pointer;
+      flex: 1;
     }
-    .token-proxy-tag {
+    .lane-tag {
       font-size: 0.7rem;
-      padding: 1px 6px;
+      padding: 2px 8px;
       border-radius: 999px;
-      background: #e0f2fe;
-      color: #0369a1;
       white-space: nowrap;
     }
-    .badge {
-      display: inline-block;
-      padding: 1px 6px;
-      border-radius: 999px;
-      font-size: 0.7rem;
-      background: #eef2ff;
-      color: #4338ca;
-      margin-left: 4px;
+    .lane-tag.proxy {
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+    .lane-tag.no-proxy {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .lane-tag.project {
+      background: #f3e8ff;
+      color: #7c3aed;
+      font-size: 0.65rem;
     }
     .status-line {
       font-size: 0.8rem;
       color: #4b5563;
       margin-top: 4px;
+      padding: 6px 8px;
+      background: #f3f4f6;
+      border-radius: 4px;
     }
-    .results-grid {
+    .video-results-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 10px;
-      margin-top: 10px;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+      margin-top: 12px;
     }
-    .result-item {
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
+    .video-result-item {
+      border: 2px solid #e5e7eb;
+      border-radius: 10px;
       overflow: hidden;
       background: #fff;
-      font-size: 0.8rem;
+      font-size: 0.85rem;
     }
-    .result-item img {
+    .video-result-item video {
       width: 100%;
-      height: 120px;
+      height: 180px;
       object-fit: cover;
       display: block;
+      background: #111827;
     }
-    .result-body {
-      padding: 6px 8px;
+    .video-result-body {
+      padding: 8px 10px;
     }
-    .result-body .idx {
-      font-weight: 600;
+    .video-result-body .lane-name {
+      font-weight: 700;
       color: #4f46e5;
-      margin-bottom: 2px;
+      margin-bottom: 4px;
+      font-size: 0.95rem;
+    }
+    .video-result-body .status {
+      font-size: 0.75rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      display: inline-block;
+      margin-bottom: 4px;
+    }
+    .video-result-body .status.generating {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    .video-result-body .status.success {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    .video-result-body .status.error {
+      background: #fee2e2;
+      color: #991b1b;
     }
     .log {
       font-family: 'Courier New', monospace;
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       background: #111827;
       color: #e5e7eb;
       border-radius: 8px;
-      padding: 8px;
-      max-height: 260px;
+      padding: 10px;
+      max-height: 350px;
       overflow-y: auto;
       white-space: pre-wrap;
+      word-break: break-word;
     }
     .log-line.info { color: #a5b4fc; }
     .log-line.success { color: #6ee7b7; }
     .log-line.error { color: #fca5a5; }
     .log-line.warn { color: #fde68a; }
-    @media (max-width: 900px) {
+    @media (max-width: 1024px) {
       .grid {
         grid-template-columns: 1fr;
       }
@@ -188,77 +227,76 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>Index 4 - Test Multi Acc + Proxy (Whisk Image)</h1>
-      <p>Chọn nhiều token (mỗi token = 1 acc + proxy) → Load Token Pool → bắn nhanh prompts để xem mediaID + ảnh.</p>
+      <h1>🎬 Index 4 - Test Đa Luồng Veo3 Video</h1>
+      <p>Chọn nhiều luồng (mỗi luồng = profile + token + proxy + projectID) → Chạy đồng loạt video gen để test tránh 429.</p>
     </div>
 
     <div class="grid">
-      <!-- LEFT: TOKEN POOL + TEST SETTINGS -->
+      <!-- LEFT: LANE SELECTOR + TEST SETTINGS -->
       <div class="card">
-        <h2>⚡ Token Pool (Multi Acc + Proxy)</h2>
+        <h2>⚡ Chọn Luồng (Lanes)</h2>
         <div class="input-group">
-          <label>Danh sách token (từ tokens.txt)</label>
-          <div id="tokenPoolStatus" class="status-line">Đang load...</div>
+          <label>Danh sách luồng (từ tokens.xlsx)</label>
+          <div id="lanePoolStatus" class="status-line">Đang load...</div>
         </div>
-        <div id="tokenList" class="token-pool-list">
-          <div style="font-size:0.8rem;color:#6b7280;">Đang đọc file tokens.txt...</div>
+        <div id="laneList" class="lane-pool-list">
+          <div style="font-size:0.8rem;color:#6b7280;">Đang đọc file tokens.xlsx...</div>
         </div>
         <div style="margin-top:8px;">
-          <button class="btn" onclick="loadTokenPool()">⚡ Load Token Pool</button>
-          <button class="btn secondary small" onclick="refreshTokenList()">🔄 Refresh</button>
-        </div>
-        <div class="status-line">
-          <strong>Lưu ý:</strong> server sẽ round-robin qua token pool khi gọi <code>/api/generate</code> → mỗi request dùng acc + proxy khác nhau.
+          <button class="btn" onclick="loadLanePool()">⚡ Load Luồng</button>
+          <button class="btn secondary" onclick="refreshLaneList()">🔄 Refresh</button>
         </div>
 
-        <hr style="margin:12px 0;border:none;border-top:1px solid #e5e7eb;" />
+        <hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb;" />
 
-        <h2>🧪 Prompt Test Nhanh</h2>
+        <h2>🎥 Test Video Đa Luồng</h2>
         <div class="input-group">
-          <label>Prompts test (mỗi dòng 1 prompt)</label>
-          <textarea id="testPrompts" placeholder="1. Simple test prompt 1
-2. Simple test prompt 2
-3. Simple test prompt 3"></textarea>
+          <label>Prompt video</label>
+          <textarea id="videoPrompt" rows="3" placeholder="Camera zoom in -out mượt mà">Camera zoom in -out mượt mà</textarea>
+        </div>
+        <div class="input-group">
+          <label>Ảnh 1 (mediaId) - Start image</label>
+          <input id="image1" value="CAMaJDY1ZTFkNGYyLThlYmEtNGEyNC05OTUyLTgyZGI5YmZhNGNjMSIEQ00wQiokM2Q2YjcyMGQtODgyNS00MmE2LWIxYmEtN2I5ZmI1ZmRlNDUx">
+        </div>
+        <div class="input-group">
+          <label>Ảnh 2 (mediaId) - End image</label>
+          <input id="image2" value="CAMaJDY1ZTFkNGYyLThlYmEtNGEyNC05OTUyLTgyZGI5YmZhNGNjMSIEQ000QiokMjI4MTc3NjEtZjllZS00Y2ZhLTk1OGQtZTM4OTQ5NDNhMzI0">
         </div>
         <div class="input-group">
           <label>Aspect ratio</label>
-          <select id="testAspect">
-            <option value="IMAGE_ASPECT_RATIO_LANDSCAPE">Landscape (16:9)</option>
-            <option value="IMAGE_ASPECT_RATIO_PORTRAIT">Portrait (9:16)</option>
-            <option value="IMAGE_ASPECT_RATIO_SQUARE">Square (1:1)</option>
+          <select id="videoAspect">
+            <option value="VIDEO_ASPECT_RATIO_LANDSCAPE">Landscape (16:9)</option>
+            <option value="VIDEO_ASPECT_RATIO_PORTRAIT">Portrait (9:16)</option>
+            <option value="VIDEO_ASPECT_RATIO_SQUARE">Square (1:1)</option>
           </select>
         </div>
-        <div class="input-group">
-          <label>Common suffix (tuỳ chọn, sẽ gắn sau mọi prompt)</label>
-          <textarea id="testCommon" rows="2" placeholder="Ví dụ: anime style, vibrant colors, for kids"></textarea>
+        <div style="margin-top:8px;">
+          <button class="btn" id="testBtn" onclick="runMultiLaneVideoTest()">🚀 TEST ĐA LUỒNG</button>
         </div>
-        <div style="margin-top:4px;">
-          <button class="btn" onclick="runBurstTest()">🚀 Gen ảnh (multi acc + proxy)</button>
-        </div>
-        <div class="status-line" id="burstStatus">Chưa chạy test.</div>
-
-        <hr style="margin:12px 0;border:none;border-top:1px solid #e5e7eb;" />
-
-        <h2>🔑 MediaID copy nhanh</h2>
-        <div class="input-group">
-          <label>MediaID (generationId) vừa gen</label>
-          <textarea id="mediaIdOutput" readonly placeholder="Sau khi bắn test, mediaID sẽ hiển thị ở đây để copy sang index3 (MediaID Input / Veo3)."></textarea>
-        </div>
+        <div class="status-line" id="testStatus">Chưa chạy test. Chọn luồng và nhấn nút TEST.</div>
       </div>
 
-      <!-- RIGHT: KẾT QUẢ + LOG -->
+      <!-- RIGHT: RESULTS + LOG -->
       <div class="card">
-        <h2>📊 Kết quả ảnh + mediaID</h2>
-        <div id="results" class="results-grid"></div>
+        <h2>📊 Kết quả Video</h2>
+        <div id="videoResults" class="video-results-grid">
+          <div style="font-size:0.85rem;color:#6b7280;padding:20px;text-align:center;">
+            Chưa có kết quả. Chạy test để xem video được gen từ các luồng.
+          </div>
+        </div>
 
-        <h2 style="margin-top:14px;">🧾 Log</h2>
+        <h2 style="margin-top:20px;">🧾 Log</h2>
         <div id="log" class="log"></div>
       </div>
     </div>
   </div>
 
-  <script>
-    let tokenListCache = [];
+  <script type="module">
+    import { VideoVeo3 } from './video-veo3.js';
+
+    let laneListCache = [];
+    let activeLanes = [];  // Lanes đang running
+    let videoResults = new Map();  // Map<laneName, {status, videoUrl, error}>
 
     function appendLog(message, type = 'info') {
       const logEl = document.getElementById('log');
@@ -270,57 +308,63 @@
       logEl.scrollTop = logEl.scrollHeight;
     }
 
-    async function refreshTokenList() {
+    async function refreshLaneList() {
       try {
         const res = await fetch('/api/list-tokens');
         const data = await res.json();
-        const listEl = document.getElementById('tokenList');
-        const statusEl = document.getElementById('tokenPoolStatus');
+        const listEl = document.getElementById('laneList');
+        const statusEl = document.getElementById('lanePoolStatus');
 
         listEl.innerHTML = '';
 
         if (!data.success || !data.tokens || data.tokens.length === 0) {
-          listEl.innerHTML = '<div style="font-size:0.8rem;color:#6b7280;">Chưa có token nào trong tokens.txt.</div>';
-          statusEl.textContent = '0 token.';
-          tokenListCache = [];
-          appendLog('Không tìm thấy token nào trong tokens.txt', 'warn');
+          listEl.innerHTML = '<div style="font-size:0.8rem;color:#6b7280;">Chưa có token/lane nào trong tokens.xlsx.</div>';
+          statusEl.textContent = '0 luồng.';
+          laneListCache = [];
+          appendLog('Không tìm thấy lane nào trong tokens.xlsx', 'warn');
           return;
         }
 
-        tokenListCache = data.tokens;
-        statusEl.textContent = `Tìm thấy ${data.tokens.length} token.`;
+        laneListCache = data.tokens;
+        statusEl.textContent = `Tìm thấy ${data.tokens.length} luồng.`;
 
-        data.tokens.forEach(t => {
+        data.tokens.forEach(lane => {
           const row = document.createElement('div');
-          row.className = 'token-item';
-          const proxyLabel = t.hasProxy ? '🌐 proxy' : '🏠 local';
+          row.className = 'lane-item';
+          const proxyTag = lane.hasProxy ?
+            `<span class="lane-tag proxy">🌐 Proxy</span>` :
+            `<span class="lane-tag no-proxy">🏠 Local</span>`;
+          const projectTag = lane.projectId ?
+            `<span class="lane-tag project">📦 ${lane.projectId.substring(0, 8)}...</span>` : '';
+
           row.innerHTML = `
             <label>
-              <input type="checkbox" class="token-checkbox" value="${t.name}">
-              <span>${t.name}</span>
+              <input type="checkbox" class="lane-checkbox" value="${lane.name}">
+              <strong>${lane.name}</strong>
             </label>
-            <span class="token-proxy-tag">${proxyLabel}</span>
+            ${proxyTag}
+            ${projectTag}
           `;
           listEl.appendChild(row);
         });
 
-        appendLog(`Đã load ${data.tokens.length} token từ tokens.txt`, 'info');
+        appendLog(`Đã load ${data.tokens.length} luồng từ tokens.xlsx`, 'success');
       } catch (err) {
-        appendLog('Lỗi load token list: ' + err.message, 'error');
+        appendLog('Lỗi load lane list: ' + err.message, 'error');
       }
     }
 
-    async function loadTokenPool() {
-      const checkboxes = document.querySelectorAll('.token-checkbox:checked');
+    async function loadLanePool() {
+      const checkboxes = document.querySelectorAll('.lane-checkbox:checked');
       const names = Array.from(checkboxes).map(c => c.value);
-      const statusEl = document.getElementById('tokenPoolStatus');
+      const statusEl = document.getElementById('lanePoolStatus');
 
       if (names.length === 0) {
-        alert('Chọn ít nhất 1 token để tạo pool.');
+        alert('Chọn ít nhất 1 luồng để test.');
         return;
       }
 
-      appendLog(`Load token pool: ${names.join(', ')}`, 'info');
+      appendLog(`Load lane pool: ${names.join(', ')}`, 'info');
       statusEl.textContent = 'Đang load pool...';
 
       try {
@@ -331,105 +375,189 @@
         });
         const data = await res.json();
         if (data.success) {
-          statusEl.textContent = `✅ Pool: ${data.tokens.join(', ')}`;
-          appendLog(`Token pool ready với ${data.tokens.length} token`, 'success');
+          activeLanes = data.tokens;
+          statusEl.textContent = `✅ Pool: ${data.tokens.join(', ')} (${data.tokens.length} luồng)`;
+          appendLog(`Lane pool ready với ${data.tokens.length} luồng`, 'success');
         } else {
           statusEl.textContent = 'Lỗi load pool';
-          appendLog('Lỗi load token pool: ' + data.error, 'error');
+          appendLog('Lỗi load lane pool: ' + data.error, 'error');
         }
       } catch (err) {
         statusEl.textContent = 'Lỗi load pool';
-        appendLog('Lỗi load token pool: ' + err.message, 'error');
+        appendLog('Lỗi load lane pool: ' + err.message, 'error');
       }
     }
 
-    function parseTestPrompts() {
-      const raw = document.getElementById('testPrompts').value.trim();
-      if (!raw) return [];
-      return raw.split('\n')
-        .map(l => l.trim())
-        .filter(Boolean)
-        .map(line => line.replace(/^\d+\.\s*/, '').replace(/^#\d+[:.]\s*/i, ''));
+    async function runMultiLaneVideoTest() {
+      const selectedLanes = [...document.querySelectorAll('.lane-checkbox:checked')].map(c => c.value);
+      const prompt = document.getElementById('videoPrompt').value.trim();
+      const image1 = document.getElementById('image1').value.trim();
+      const image2 = document.getElementById('image2').value.trim();
+      const aspectRatio = document.getElementById('videoAspect').value;
+      const testBtn = document.getElementById('testBtn');
+      const testStatus = document.getElementById('testStatus');
+
+      if (selectedLanes.length === 0) {
+        alert('Chọn ít nhất 1 luồng để test!');
+        return;
+      }
+
+      if (!prompt || !image1 || !image2) {
+        alert('Nhập đầy đủ prompt và 2 mediaId ảnh!');
+        return;
+      }
+
+      // Reset results
+      videoResults.clear();
+      updateVideoResultsUI();
+
+      testBtn.disabled = true;
+      testBtn.textContent = '⏳ Đang gen...';
+      testStatus.textContent = `Đang gen ${selectedLanes.length} video đồng loạt...`;
+      appendLog(`🚀 Bắt đầu test đa luồng với ${selectedLanes.length} lanes`, 'info');
+      appendLog(`Prompt: "${prompt}"`, 'info');
+
+      // Run all lanes in parallel
+      const promises = selectedLanes.map(laneName =>
+        generateVideoForLane(laneName, prompt, image1, image2, aspectRatio)
+      );
+
+      try {
+        await Promise.allSettled(promises);
+
+        // Check results
+        const successes = [...videoResults.values()].filter(r => r.status === 'success').length;
+        const errors = [...videoResults.values()].filter(r => r.status === 'error').length;
+
+        testStatus.textContent = `✅ Hoàn thành: ${successes} thành công, ${errors} lỗi`;
+        appendLog(`✅ Test hoàn thành: ${successes}/${selectedLanes.length} videos OK`, successes === selectedLanes.length ? 'success' : 'warn');
+
+        if (errors === 0) {
+          appendLog(`🎉 PERFECT! Tất cả ${selectedLanes.length} luồng gen video thành công, KHÔNG BỊ 429!`, 'success');
+        }
+      } catch (err) {
+        testStatus.textContent = '❌ Lỗi test';
+        appendLog('❌ Lỗi test đa luồng: ' + err.message, 'error');
+      } finally {
+        testBtn.disabled = false;
+        testBtn.textContent = '🚀 TEST ĐA LUỒNG';
+      }
     }
 
-    async function runBurstTest() {
-      const prompts = parseTestPrompts();
-      const common = document.getElementById('testCommon').value.trim();
-      const aspect = document.getElementById('testAspect').value;
-      const burstStatus = document.getElementById('burstStatus');
-      const resultsEl = document.getElementById('results');
-      const mediaOut = document.getElementById('mediaIdOutput');
+    async function generateVideoForLane(laneName, prompt, img1, img2, aspectRatio) {
+      appendLog(`🎬 [${laneName}] Bắt đầu gen video...`, 'info');
 
-      if (prompts.length === 0) {
-        alert('Nhập ít nhất 1 prompt để test.');
+      // Set initial status
+      videoResults.set(laneName, { status: 'generating', laneName });
+      updateVideoResultsUI();
+
+      try {
+        // Call generate-start-end with tokenName
+        const genRes = await fetch('/api/veo3/generate-start-end', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tokenName: laneName,
+            prompt,
+            startImageMediaId: img1,
+            endImageMediaId: img2,
+            aspectRatio,
+            seeds: [Math.floor(Math.random() * 65536)]  // Only 1 variant per lane
+          })
+        });
+
+        const genData = await genRes.json();
+
+        if (!genData.success || !genData.operations || genData.operations.length === 0) {
+          throw new Error(genData.error || 'Failed to start generation');
+        }
+
+        const opId = genData.operations[0].operation.name;
+        appendLog(`✅ [${laneName}] Gen started, opId: ${opId.substring(0, 40)}...`, 'success');
+
+        // Poll with tokenName (CRITICAL: must use same lane!)
+        const result = await VideoVeo3.pollOperation(opId, {
+          tokenName: laneName,
+          intervalMs: 3000,
+          maxTries: 120
+        });
+
+        if (result.video && result.video.url) {
+          videoResults.set(laneName, {
+            status: 'success',
+            laneName,
+            videoUrl: result.video.url,
+            mediaId: result.video.mediaId
+          });
+          appendLog(`🎉 [${laneName}] Video gen thành công!`, 'success');
+        } else {
+          throw new Error('No video URL in result');
+        }
+
+      } catch (err) {
+        videoResults.set(laneName, {
+          status: 'error',
+          laneName,
+          error: err.message
+        });
+        appendLog(`❌ [${laneName}] Lỗi: ${err.message}`, 'error');
+      }
+
+      updateVideoResultsUI();
+    }
+
+    function updateVideoResultsUI() {
+      const resultsEl = document.getElementById('videoResults');
+
+      if (videoResults.size === 0) {
+        resultsEl.innerHTML = '<div style="font-size:0.85rem;color:#6b7280;padding:20px;text-align:center;">Chưa có kết quả. Chạy test để xem video được gen từ các luồng.</div>';
         return;
       }
 
       resultsEl.innerHTML = '';
-      mediaOut.value = '';
-      burstStatus.textContent = `Đang gen ${prompts.length} ảnh...`;
-      appendLog(`Bắt đầu burst test với ${prompts.length} prompt`, 'info');
 
-      const allMediaIds = [];
+      for (const [laneName, result] of videoResults.entries()) {
+        const card = document.createElement('div');
+        card.className = 'video-result-item';
 
-      for (let i = 0; i < prompts.length; i++) {
-        let p = prompts[i];
-        if (common) p = p + '. ' + common;
+        let statusHtml = '';
+        let videoHtml = '';
 
-        appendLog(`[#${i + 1}] Gửi /api/generate`, 'info');
-        try {
-          const res = await fetch('/api/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: p, aspectRatio: aspect })
-          });
-          const data = await res.json();
-          if (data.success) {
-            const mediaId = data.generationId || '(no generationId)';
-            allMediaIds.push(mediaId);
-
-            const card = document.createElement('div');
-            card.className = 'result-item';
-            card.innerHTML = `
-              <img src="${data.imageUrl}" alt="Image ${i + 1}">
-              <div class="result-body">
-                <div class="idx">Ảnh ${i + 1}</div>
-                <div style="font-size:0.75rem;color:#4b5563;margin-bottom:2px;">MediaID:</div>
-                <div style="font-size:0.7rem;word-break:break-all;">${mediaId}</div>
-              </div>
-            `;
-            resultsEl.appendChild(card);
-
-            appendLog(`[#${i + 1}] OK, mediaID = ${mediaId.substring(0, 24)}...`, 'success');
-          } else {
-            appendLog(`[#${i + 1}] Lỗi gen ảnh: ${data.error || 'Unknown'}`, 'error');
-          }
-        } catch (err) {
-          appendLog(`[#${i + 1}] Lỗi fetch /api/generate: ${err.message}`, 'error');
+        if (result.status === 'generating') {
+          statusHtml = '<span class="status generating">⏳ Đang gen...</span>';
+          videoHtml = '<video style="background:#111827;"></video>';
+        } else if (result.status === 'success') {
+          statusHtml = '<span class="status success">✅ Thành công</span>';
+          videoHtml = `<video src="${result.videoUrl}" controls autoplay muted loop></video>`;
+        } else {
+          statusHtml = '<span class="status error">❌ Lỗi</span>';
+          videoHtml = '<video style="background:#111827;"></video>';
         }
-      }
 
-      if (allMediaIds.length > 0) {
-        mediaOut.value = allMediaIds.join('\n');
-        burstStatus.textContent = `Hoàn thành: ${allMediaIds.length}/${prompts.length} ảnh có mediaID. Copy khối trên để dùng ở index3 (MediaID Input).`;
-      } else {
-        burstStatus.textContent = 'Không gen được ảnh nào thành công.';
+        card.innerHTML = `
+          ${videoHtml}
+          <div class="video-result-body">
+            <div class="lane-name">🎯 ${laneName}</div>
+            ${statusHtml}
+            ${result.error ? `<div style="font-size:0.75rem;color:#991b1b;margin-top:4px;">${result.error}</div>` : ''}
+            ${result.mediaId ? `<div style="font-size:0.7rem;color:#6b7280;margin-top:4px;word-break:break-all;">ID: ${result.mediaId.substring(0, 30)}...</div>` : ''}
+          </div>
+        `;
+
+        resultsEl.appendChild(card);
       }
     }
 
     // Init
     (async function init() {
-      appendLog('Khởi động trang Index 4 (multi acc + proxy test)...', 'info');
-      await refreshTokenList();
-      try {
-        const res = await fetch('/api/token-pool-status');
-        const data = await res.json();
-        if (data.success && data.poolSize > 0) {
-          document.getElementById('tokenPoolStatus').textContent = `Đã có pool sẵn: ${data.tokens.join(', ')}`;
-          appendLog(`Server đang có token pool sẵn (${data.poolSize} token)`, 'info');
-        }
-      } catch (_) {}
+      appendLog('🚀 Khởi động Index 4 - Test Đa Luồng Veo3...', 'info');
+      await refreshLaneList();
     })();
+
+    // Expose functions to global scope
+    window.refreshLaneList = refreshLaneList;
+    window.loadLanePool = loadLanePool;
+    window.runMultiLaneVideoTest = runMultiLaneVideoTest;
   </script>
 </body>
 </html>
