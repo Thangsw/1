@@ -272,10 +272,15 @@ const VideoVeo3 = (() => {
       durationSec = 8,
       seed = 0,
       projectId,
-      sceneId
+      sceneId,
+      tokenName  // CRITICAL: Lane name for multi-account + proxy
     } = args;
 
+    const laneTag = tokenName ? `[Lane: ${tokenName}]` : '';
+    console.log(`📺 ${laneTag} [startEndFlow] START`, { prompt, startImageMediaId, endImageMediaId, aspectRatio, projectId, sceneId });
+
     try {
+      console.log(`📤 ${laneTag} [startEndFlow] Submitting batch logs...`);
       await api.submitBatchLog(buildTextOrImageLog("VIDEOFX_CREATE_VIDEO", "TEXT_TO_VIDEO"));
       await api.submitBatchLog(buildTextOrImageLog("PINHOLE_GENERATE_VIDEO", "TEXT_TO_VIDEO"));
       await api.submitBatchLog(buildVideoTimerLog());
@@ -286,8 +291,13 @@ const VideoVeo3 = (() => {
     if (endImageMediaId)   payload.endImageMediaId   = endImageMediaId;
     if (projectId) payload.projectId = projectId;
     if (sceneId)   payload.sceneId   = sceneId;
+    if (tokenName) payload.tokenName = tokenName;  // CRITICAL: Pass tokenName to API
 
-    return api.generateStartEnd(payload);
+    console.log(`🔄 ${laneTag} [startEndFlow] Calling api.generateStartEnd...`);
+    const result = await api.generateStartEnd(payload);
+    console.log(`✅ ${laneTag} [startEndFlow] Result:`, result);
+
+    return result;
   }
 
   async function textToVideoFlow(args) {

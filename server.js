@@ -1520,6 +1520,25 @@ app.get('/api/token-pool-status', (req, res) => {
 // LANE MANAGER ENDPOINTS - Manage tokens.xlsx directly
 // ============================================================
 
+// Get all lanes from tokens.xlsx
+app.get('/api/lanes', async (req, res) => {
+  try {
+    const lanes = await readTokensFromFile();
+    res.json({
+      success: true,
+      lanes: lanes.map(l => ({
+        name: l.name,
+        hasProxy: !!l.proxy,
+        hasProjectId: !!l.projectId,
+        hasSceneId: !!l.sceneId
+      }))
+    });
+  } catch (error) {
+    log(`❌ Failed to read lanes: ${error.message}`, 'error');
+    res.json({ success: false, error: error.message });
+  }
+});
+
 // Save or update a lane in tokens.xlsx
 app.post('/api/lanes/save', async (req, res) => {
   try {
