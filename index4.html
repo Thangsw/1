@@ -236,6 +236,12 @@
       <div class="card">
         <h2>⚡ Chọn Luồng (Lanes)</h2>
         <div class="input-group">
+          <label>
+            <input type="checkbox" id="selectAllLanes" onchange="toggleSelectAllLanes()">
+            <strong style="margin-left: 4px;">Chọn tất cả</strong>
+          </label>
+        </div>
+        <div class="input-group">
           <label>Danh sách luồng (từ tokens.xlsx)</label>
           <div id="lanePoolStatus" class="status-line">Đang load...</div>
         </div>
@@ -249,10 +255,25 @@
 
         <hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb;" />
 
+        <h2>🖼️ Test Ảnh Đa Luồng</h2>
+        <div class="input-group">
+          <label>Prompt ảnh (mỗi dòng 1 prompt)</label>
+          <textarea id="imagePrompts" rows="4" placeholder="A beautiful sunset over mountains
+A cat playing with yarn
+A modern city skyline at night"></textarea>
+        </div>
+        <div style="margin-top:8px;">
+          <button class="btn" onclick="runMultiLaneImageTest()">🖼️ TEST ẢNH ĐA LUỒNG</button>
+        </div>
+
+        <hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb;" />
+
         <h2>🎥 Test Video Đa Luồng</h2>
         <div class="input-group">
-          <label>Prompt video</label>
-          <textarea id="videoPrompt" rows="3" placeholder="Camera zoom in -out mượt mà">Camera zoom in -out mượt mà</textarea>
+          <label>Prompt video (mỗi dòng 1 prompt)</label>
+          <textarea id="videoPrompts" rows="3" placeholder="Camera zoom in -out mượt mà
+Camera pans slowly from left to right
+Slow motion close-up">Camera zoom in -out mượt mà</textarea>
         </div>
         <div class="input-group">
           <label>Ảnh 1 (mediaId) - Start image</label>
@@ -271,14 +292,21 @@
           </select>
         </div>
         <div style="margin-top:8px;">
-          <button class="btn" id="testBtn" onclick="runMultiLaneVideoTest()">🚀 TEST ĐA LUỒNG</button>
+          <button class="btn" id="testVideoBtn" onclick="runMultiLaneVideoTest()">🎬 TEST VIDEO ĐA LUỒNG</button>
         </div>
         <div class="status-line" id="testStatus">Chưa chạy test. Chọn luồng và nhấn nút TEST.</div>
       </div>
 
       <!-- RIGHT: RESULTS + LOG -->
       <div class="card">
-        <h2>📊 Kết quả Video</h2>
+        <h2>🖼️ Kết quả Ảnh</h2>
+        <div id="imageResults" class="video-results-grid">
+          <div style="font-size:0.85rem;color:#6b7280;padding:20px;text-align:center;">
+            Chưa có kết quả. Chạy test ảnh để xem ảnh được gen từ các luồng.
+          </div>
+        </div>
+
+        <h2 style="margin-top:20px;">🎬 Kết quả Video</h2>
         <div id="videoResults" class="video-results-grid">
           <div style="font-size:0.85rem;color:#6b7280;padding:20px;text-align:center;">
             Chưa có kết quả. Chạy test để xem video được gen từ các luồng.
@@ -306,6 +334,15 @@
       line.textContent = '[' + ts + '] ' + message;
       logEl.appendChild(line);
       logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function toggleSelectAllLanes() {
+      const selectAllCheckbox = document.getElementById('selectAllLanes');
+      const laneCheckboxes = document.querySelectorAll('.lane-checkbox');
+      laneCheckboxes.forEach(cb => {
+        cb.checked = selectAllCheckbox.checked;
+      });
+      appendLog(selectAllCheckbox.checked ? 'Đã chọn tất cả lanes' : 'Đã bỏ chọn tất cả lanes', 'info');
     }
 
     async function refreshLaneList() {
@@ -388,13 +425,122 @@
       }
     }
 
+    async function runMultiLaneImageTest() {
+      const selectedLanes = [...document.querySelectorAll('.lane-checkbox:checked')].map(c => c.value);
+      const promptsText = document.getElementById('imagePrompts').value.trim();
+
+      if (selectedLanes.length === 0) {
+        alert('Chọn ít nhất 1 luồng để test!');
+        return;
+      }
+
+      if (!promptsText) {
+        alert('Nhập ít nhất 1 prompt ảnh!');
+        return;
+      }
+
+      // Parse prompts (mỗi dòng 1 prompt)
+      const prompts = promptsText.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+      if (prompts.length === 0) {
+        alert('Không có prompt nào hợp lệ!');
+        return;
+      }
+
+      appendLog(`🖼️ Bắt đầu test gen ảnh đa luồng với ${selectedLanes.length} lanes`, 'info');
+      appendLog(`Số lượng prompts: ${prompts.length}`, 'info');
+
+      const imageResultsEl = document.getElementById('imageResults');
+      imageResultsEl.innerHTML = '<div style="padding:20px;text-align:center;color:#6b7280;">⏳ Đang gen ảnh...</div>';
+
+      // Generate images for each lane with each prompt
+      const allPromises = [];
+      for (const laneName of selectedLanes) {
+        for (const prompt of prompts) {
+          allPromises.push(generateImageForLane(laneName, prompt));
+        }
+      }
+
+      try {
+        const results = await Promise.allSettled(allPromises);
+
+        const successes = results.filter(r => r.status === 'fulfilled' && r.value?.success).length;
+        const errors = results.filter(r => r.status === 'rejected' || !r.value?.success).length;
+
+        appendLog(`✅ Gen ảnh hoàn thành: ${successes} thành công, ${errors} lỗi`, successes > 0 ? 'success' : 'error');
+
+        // Update UI with results
+        imageResultsEl.innerHTML = '';
+        results.forEach((result, idx) => {
+          if (result.status === 'fulfilled' && result.value?.success) {
+            const item = document.createElement('div');
+            item.className = 'video-result-item';
+            item.innerHTML = `
+              <img src="${result.value.imageUrl}" style="width:100%;height:180px;object-fit:cover;background:#111827;">
+              <div class="video-result-body">
+                <div class="lane-name">${result.value.laneName}</div>
+                <div class="status success">✓ Thành công</div>
+                <div style="font-size:0.75rem;color:#6b7280;margin-top:4px;">${result.value.prompt.substring(0, 50)}...</div>
+              </div>
+            `;
+            imageResultsEl.appendChild(item);
+          }
+        });
+
+        if (successes === 0) {
+          imageResultsEl.innerHTML = '<div style="padding:20px;text-align:center;color:#dc2626;">❌ Không có ảnh nào được tạo thành công</div>';
+        }
+
+      } catch (err) {
+        appendLog('❌ Lỗi test gen ảnh: ' + err.message, 'error');
+        imageResultsEl.innerHTML = '<div style="padding:20px;text-align:center;color:#dc2626;">❌ Lỗi: ' + err.message + '</div>';
+      }
+    }
+
+    async function generateImageForLane(laneName, prompt) {
+      try {
+        appendLog(`[${laneName}] Đang gen ảnh: "${prompt.substring(0, 50)}..."`, 'info');
+
+        const res = await fetch('/api/generate-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            laneName,
+            prompt,
+            aspectRatio: 'IMAGE_ASPECT_RATIO_LANDSCAPE'
+          })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          appendLog(`[${laneName}] ✓ Gen ảnh thành công`, 'success');
+          return {
+            success: true,
+            laneName,
+            prompt,
+            imageUrl: data.imageUrl,
+            mediaId: data.mediaId
+          };
+        } else {
+          appendLog(`[${laneName}] ✗ Gen ảnh thất bại: ${data.error}`, 'error');
+          return { success: false, laneName, error: data.error };
+        }
+      } catch (err) {
+        appendLog(`[${laneName}] ✗ Lỗi gen ảnh: ${err.message}`, 'error');
+        return { success: false, laneName, error: err.message };
+      }
+    }
+
     async function runMultiLaneVideoTest() {
       const selectedLanes = [...document.querySelectorAll('.lane-checkbox:checked')].map(c => c.value);
-      const prompt = document.getElementById('videoPrompt').value.trim();
+      const promptsText = document.getElementById('videoPrompts').value.trim();
       const image1 = document.getElementById('image1').value.trim();
       const image2 = document.getElementById('image2').value.trim();
       const aspectRatio = document.getElementById('videoAspect').value;
-      const testBtn = document.getElementById('testBtn');
+      const testBtn = document.getElementById('testVideoBtn');
       const testStatus = document.getElementById('testStatus');
 
       if (selectedLanes.length === 0) {
@@ -402,8 +548,18 @@
         return;
       }
 
-      if (!prompt || !image1 || !image2) {
+      if (!promptsText || !image1 || !image2) {
         alert('Nhập đầy đủ prompt và 2 mediaId ảnh!');
+        return;
+      }
+
+      // Parse prompts (mỗi dòng 1 prompt)
+      const prompts = promptsText.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+      if (prompts.length === 0) {
+        alert('Không có prompt nào hợp lệ!');
         return;
       }
 
@@ -413,42 +569,47 @@
 
       testBtn.disabled = true;
       testBtn.textContent = '⏳ Đang gen...';
-      testStatus.textContent = `Đang gen ${selectedLanes.length} video đồng loạt...`;
-      appendLog(`🚀 Bắt đầu test đa luồng với ${selectedLanes.length} lanes`, 'info');
-      appendLog(`Prompt: "${prompt}"`, 'info');
+      testStatus.textContent = `Đang gen ${selectedLanes.length * prompts.length} video đồng loạt...`;
+      appendLog(`🚀 Bắt đầu test đa luồng với ${selectedLanes.length} lanes x ${prompts.length} prompts`, 'info');
+      prompts.forEach((p, i) => appendLog(`Prompt ${i+1}: "${p}"`, 'info'));
 
-      // Run all lanes in parallel - projectId/sceneId will be taken from each lane's data
-      const promises = selectedLanes.map(laneName =>
-        generateVideoForLane(laneName, prompt, image1, image2, aspectRatio)
-      );
+      // Run all lanes with all prompts in parallel - projectId/sceneId will be taken from each lane's data
+      const allPromises = [];
+      for (const laneName of selectedLanes) {
+        for (const prompt of prompts) {
+          allPromises.push(generateVideoForLane(laneName, prompt, image1, image2, aspectRatio));
+        }
+      }
 
       try {
-        await Promise.allSettled(promises);
+        await Promise.allSettled(allPromises);
 
         // Check results
         const successes = [...videoResults.values()].filter(r => r.status === 'success').length;
         const errors = [...videoResults.values()].filter(r => r.status === 'error').length;
+        const total = selectedLanes.length * prompts.length;
 
-        testStatus.textContent = `✅ Hoàn thành: ${successes} thành công, ${errors} lỗi`;
-        appendLog(`✅ Test hoàn thành: ${successes}/${selectedLanes.length} videos OK`, successes === selectedLanes.length ? 'success' : 'warn');
+        testStatus.textContent = `✅ Hoàn thành: ${successes}/${total} thành công, ${errors} lỗi`;
+        appendLog(`✅ Test hoàn thành: ${successes}/${total} videos OK`, successes === total ? 'success' : 'warn');
 
         if (errors === 0) {
-          appendLog(`🎉 PERFECT! Tất cả ${selectedLanes.length} luồng gen video thành công, KHÔNG BỊ 429!`, 'success');
+          appendLog(`🎉 PERFECT! Tất cả ${total} video gen thành công, KHÔNG BỊ 429!`, 'success');
         }
       } catch (err) {
         testStatus.textContent = '❌ Lỗi test';
         appendLog('❌ Lỗi test đa luồng: ' + err.message, 'error');
       } finally {
         testBtn.disabled = false;
-        testBtn.textContent = '🚀 TEST ĐA LUỒNG';
+        testBtn.textContent = '🎬 TEST VIDEO ĐA LUỒNG';
       }
     }
 
     async function generateVideoForLane(laneName, prompt, img1, img2, aspectRatio) {
-      appendLog(`🎬 [${laneName}] Bắt đầu gen video...`, 'info');
+      const resultKey = `${laneName}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      appendLog(`🎬 [${laneName}] Bắt đầu gen video: "${prompt.substring(0, 50)}..."`, 'info');
 
       // Set initial status
-      videoResults.set(laneName, { status: 'generating', laneName });
+      videoResults.set(resultKey, { status: 'generating', laneName, prompt });
       updateVideoResultsUI();
 
       try {
@@ -483,9 +644,10 @@
         });
 
         if (result.video && result.video.url) {
-          videoResults.set(laneName, {
+          videoResults.set(resultKey, {
             status: 'success',
             laneName,
+            prompt,
             videoUrl: result.video.url,
             mediaId: result.video.mediaId
           });
@@ -495,9 +657,10 @@
         }
 
       } catch (err) {
-        videoResults.set(laneName, {
+        videoResults.set(resultKey, {
           status: 'error',
           laneName,
+          prompt,
           error: err.message
         });
         appendLog(`❌ [${laneName}] Lỗi: ${err.message}`, 'error');
@@ -537,8 +700,9 @@
         card.innerHTML = `
           ${videoHtml}
           <div class="video-result-body">
-            <div class="lane-name">🎯 ${laneName}</div>
+            <div class="lane-name">🎯 ${result.laneName}</div>
             ${statusHtml}
+            ${result.prompt ? `<div style="font-size:0.75rem;color:#374151;margin-top:4px;">"${result.prompt.substring(0, 50)}..."</div>` : ''}
             ${result.error ? `<div style="font-size:0.75rem;color:#991b1b;margin-top:4px;">${result.error}</div>` : ''}
             ${result.mediaId ? `<div style="font-size:0.7rem;color:#6b7280;margin-top:4px;word-break:break-all;">ID: ${result.mediaId.substring(0, 30)}...</div>` : ''}
           </div>
@@ -557,7 +721,9 @@
     // Expose functions to global scope
     window.refreshLaneList = refreshLaneList;
     window.loadLanePool = loadLanePool;
+    window.runMultiLaneImageTest = runMultiLaneImageTest;
     window.runMultiLaneVideoTest = runMultiLaneVideoTest;
+    window.toggleSelectAllLanes = toggleSelectAllLanes;
   </script>
 </body>
 </html>
