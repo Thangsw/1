@@ -311,8 +311,16 @@ const getAccessToken = async (forceRefresh = false, tokenObj = null, options = {
 
     if (tokenAge < maxAge) {
       const tokenName = tokenObj ? `(${tokenObj.name})` : '';
-      log(`✓ Using cached access token ${tokenName} (age: ${Math.floor(tokenAge / 1000 / 60)}min)`);
-      return targetToken.accessToken;
+
+      // Validate token before using cached version
+      const isValid = await validateToken(targetToken.accessToken);
+      if (isValid) {
+        log(`✓ Using cached access token ${tokenName} (age: ${Math.floor(tokenAge / 1000 / 60)}min)`);
+        return targetToken.accessToken;
+      } else {
+        log(`⚠️ Cached token ${tokenName} is invalid, refreshing...`);
+        // Continue to refresh token below
+      }
     }
   }
 
@@ -327,19 +335,31 @@ const getAccessToken = async (forceRefresh = false, tokenObj = null, options = {
       await extractCredentials();
     }
 
+    // Log cookies for debugging
+    log(`[DEBUG] Sending cookies: ${targetToken.cookies.substring(0, 100)}...`);
+
     // IMPORTANT: call auth/session directly without proxy/retry to match browser behaviour
     const response = await axios.get('https://labs.google/fx/api/auth/session', {
       headers: {
         'Cookie': targetToken.cookies,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
         'Referer': 'https://labs.google/fx/tools/whisk/project',
-        'Accept': '*/*'
+        'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin'
       },
       timeout: 30000
     });
 
     log(`[DEBUG] Auth session response status: ${response.status}`);
     log(`[DEBUG] Response has access_token: ${!!(response.data && response.data.access_token)}`);
+    log(`[DEBUG] Full response data: ${JSON.stringify(response.data).substring(0, 200)}...`);
 
     if (response.data && response.data.access_token) {
       targetToken.accessToken = response.data.access_token;
@@ -373,6 +393,43 @@ const getAccessToken = async (forceRefresh = false, tokenObj = null, options = {
 
     log(`Error details: ${error.stack}`, 'error');
     throw error;
+  }
+};
+
+// Validate if access token is still valid
+const validateToken = async (accessToken) => {
+  try {
+    const response = await axios.post(
+      'https://aisandbox-pa.googleapis.com/v1:fetchUserRecommendations',
+      {
+        onramp: [
+          'WHISK_UPGRADE_BUTTON',
+          'WHISK_MANAGE_AI_CREDITS',
+          'WHISK_CREDIT_QUOTA_UPGRADE',
+          'WHISK_ANIMATE_TOAST'
+        ]
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      }
+    );
+
+    if (response.status === 200) {
+      log('✓ Access token is still valid');
+      return true;
+    }
+    return false;
+  } catch (error) {
+    if (error.response?.status === 401) {
+      log('⚠️ Access token expired, need to refresh');
+      return false;
+    }
+    log(`⚠️ Token validation failed: ${error.message}`, 'warning');
+    return false;
   }
 };
 
@@ -3078,7 +3135,7 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
         aspectRatio,
         seed,
         textInput: { prompt },
-        videoModelKey: 'veo_3_1_i2v_s_fast_fl',  // FIXED: Remove 'ultra' from model name
+        videoModelKey: 'veo_3_1_i2v_s_fast_ultra_fl',  // Google updated: need 'ultra' variant
         startImage: { mediaId: startImageMediaId },
         endImage: { mediaId: endImageMediaId },
         metadata: { sceneId }

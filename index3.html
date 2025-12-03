@@ -998,6 +998,10 @@ Camera moves forward into the scene
 
     function updateStatus(element, status) {
       const el = document.getElementById(element);
+      if (!el) {
+        console.warn(`Element with id '${element}' not found`);
+        return;
+      }
       el.className = 'status-dot';
       if (status === 'active') el.classList.add('active');
       if (status === 'error') el.classList.add('error');
