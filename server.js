@@ -580,11 +580,19 @@ const generateImage = async (prompt, options = {}, token = null) => {
   log(`Prompt: "${prompt}"`);
 
   try {
-    // CRITICAL: Get access token from provided token or global session
+    // CRITICAL: Use authorization from token if available (from tokens.xlsx)
     let accessToken;
     if (token) {
-      // Use token from pool
-      accessToken = await getAccessToken(false, token);
+      // Check if token has authorization field (from lanes)
+      if (token.authorization) {
+        // Use saved authorization token from lane - NO API CALL NEEDED
+        accessToken = token.authorization.replace(/^Bearer\s+/i, '').trim();
+        log(`✓ Using authorization from lane: ${accessToken.substring(0, 30)}...`);
+      } else {
+        // Fallback: Call API to get new access token
+        accessToken = await getAccessToken(false, token);
+        log(`✓ Getting fresh access token via API`);
+      }
     } else {
       // Fallback to global session
       if (!session.accessToken || Date.now() - session.lastUpdate > 30 * 60 * 1000) {
@@ -1969,16 +1977,24 @@ app.get('/api/chrome-status', async (req, res) => {
 });
 
 app.post('/api/generate', async (req, res) => {
-  const { prompt, aspectRatio, seed, originalMediaGenerationId } = req.body;
+  const { prompt, aspectRatio, seed, originalMediaGenerationId, laneName } = req.body;
 
   if (!prompt) {
     return res.json({ success: false, error: 'Prompt is required' });
   }
 
-  // CRITICAL: Use token from pool if available (round-robin)
-  const token = getNextToken();
-  const tokenName = token.name || 'default';
-  log(`🎨 Generating image with token: ${tokenName}`);
+  // CRITICAL: Use specific lane token if laneName provided, otherwise round-robin
+  let token;
+  if (laneName) {
+    token = getTokenByName(laneName);
+    if (!token) {
+      return res.json({ success: false, error: `Lane "${laneName}" not found` });
+    }
+    log(`🎨 Generating image with lane: ${laneName}`);
+  } else {
+    token = getNextToken();
+    log(`🎨 Generating image with token: ${token.name || 'default'}`);
+  }
 
   const result = await generateImage(prompt, { aspectRatio, seed, originalMediaGenerationId }, token);
   res.json(result);

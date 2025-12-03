@@ -2327,6 +2327,12 @@ Camera moves forward into the scene
       const payload = { prompt, aspectRatio };
       if (seed) payload.seed = seed;
 
+      // CRITICAL: Add laneName from selected lane to use specific token
+      const selectedLaneName = document.getElementById('selectedLane').value;
+      if (selectedLaneName) {
+        payload.laneName = selectedLaneName;
+      }
+
       const useReference = refImage;
 
       if (useReference) {
@@ -2342,6 +2348,11 @@ Camera moves forward into the scene
           generationId: useReference.generationId,
           seed: null  // CRITICAL: seed is null for editImage
         };
+
+        // Add laneName if selected
+        if (selectedLaneName) {
+          editPayload.laneName = selectedLaneName;
+        }
 
         console.log(`Using editImage API with caption: "${editPayload.captionPrompt.substring(0, 30)}..." and instruction: "${prompt.substring(0, 30)}..."`);
 
