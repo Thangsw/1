@@ -318,17 +318,15 @@
             <label style="font-weight: 600; color: #667eea;">🔧 Chrome & Token</label>
           </div>
 
-          <div class="input-group">
-            <label>Chrome Profile (optional)</label>
-            <input type="text" id="chromeProfile" placeholder="default, profile1, profile2...">
-            <div class="form-hint">Để trống = dùng profile mặc định</div>
-          </div>
-
           <div class="input-group" style="display: flex; gap: 8px;">
             <button type="button" class="btn primary small" onclick="launchChrome()" style="flex: 1;">🚀 Mở Chrome</button>
             <button type="button" class="btn primary small" onclick="captureToken()" style="flex: 1;">🔑 Bắt Token</button>
           </div>
-          <div class="form-hint">1. Mở Chrome → 2. Login vào Google Labs → 3. Bắt Token</div>
+          <div class="form-hint" id="chromeHint">
+            Thêm mới: Chrome sẽ dùng profile trắng<br>
+            Sửa lane: Chrome sẽ dùng profile của lane đó<br>
+            1. Mở Chrome → 2. Login vào Google Labs → 3. Bắt Token
+          </div>
 
           <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;">
 
@@ -346,7 +344,7 @@
 
           <div class="btn-group">
             <button type="submit" class="btn primary" id="submitBtn">💾 Lưu Lane</button>
-            <button type="button" class="btn secondary" onclick="resetForm()">🔄 Reset</button>
+            <button type="button" class="btn secondary" id="resetBtn" onclick="resetForm()">🔄 Reset</button>
           </div>
         </form>
       </div>
@@ -445,6 +443,7 @@
         document.getElementById('sceneId').value = lane.sceneId || '';
 
         document.getElementById('submitBtn').textContent = '💾 Cập nhật Lane';
+        document.getElementById('resetBtn').textContent = '❌ Huỷ / Thêm Mới';
 
         // Scroll to form
         document.querySelector('.card:last-child').scrollIntoView({ behavior: 'smooth' });
@@ -484,8 +483,23 @@
     // Launch Chrome
     async function launchChrome() {
       try {
-        const profile = document.getElementById('chromeProfile').value.trim() || '';
-        showAlert('🚀 Đang khởi động Chrome...', 'info');
+        // Determine profile based on mode:
+        // - Add New mode: blank profile
+        // - Edit mode: use lane name as profile
+        let profile = '';
+        let mode = 'blank';
+
+        if (currentEditingLane) {
+          // Edit mode: use lane name as profile
+          profile = currentEditingLane;
+          mode = currentEditingLane;
+        } else {
+          // Add New mode: use blank profile
+          profile = '';
+          mode = 'blank';
+        }
+
+        showAlert(`🚀 Đang khởi động Chrome (profile: ${mode})...`, 'info');
 
         const res = await fetch('/api/launch-chrome', {
           method: 'POST',
@@ -495,7 +509,7 @@
         const data = await res.json();
 
         if (data.success) {
-          showAlert('✅ Chrome đã khởi động! Hãy login vào Google Labs Flow.', 'success');
+          showAlert(`✅ Chrome đã khởi động (profile: ${mode})! Hãy login vào Google Labs Flow.`, 'success');
         } else {
           showAlert(`❌ ${data.error}`, 'error');
         }
@@ -580,6 +594,7 @@
       document.getElementById('laneName').disabled = false;
       document.getElementById('formTitle').textContent = '➕ Thêm Lane Mới';
       document.getElementById('submitBtn').textContent = '💾 Lưu Lane';
+      document.getElementById('resetBtn').textContent = '🔄 Reset';
       document.getElementById('sessionToken').placeholder = 'eyJh...';
       document.getElementById('cookies').placeholder = '__Secure-next-auth.session-token=...';
       document.getElementById('authorization').placeholder = 'Bearer ya29...';

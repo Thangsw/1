@@ -501,14 +501,12 @@
         <div class="section">
           <h2>🔧 Chrome & Lanes</h2>
 
-          <div class="input-group">
-            <label>Chrome Profile (optional)</label>
-            <input type="text" id="chromeProfileInput" placeholder="default, profile1...">
-          </div>
-
           <div class="input-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-            <button class="btn btn-primary" onclick="launchChromeIndex3()">🚀 Mở Chrome</button>
+            <button class="btn btn-primary" onclick="launchChromeIndex3()">🚀 Mở Chrome (Temp)</button>
             <button class="btn btn-warning" onclick="captureTokenIndex3()">🔑 Bắt Token</button>
+          </div>
+          <div style="font-size: 0.75em; color: #777; margin-top: 4px;">
+            Chrome sẽ mở session tạm thời (temp profile)
           </div>
 
           <div class="input-group">
@@ -3596,9 +3594,10 @@ Camera moves forward into the scene
     // CHROME & LANES FUNCTIONS
     // ============================================
     async function launchChromeIndex3() {
-      const profile = document.getElementById('chromeProfileInput').value.trim() || '';
+      // Index3 always uses temp session (empty profile)
+      const profile = '';
       try {
-        log('🚀 Đang khởi động Chrome...', 'info');
+        log('🚀 Đang khởi động Chrome (temp session)...', 'info');
         const res = await fetch('/api/launch-chrome', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -3606,7 +3605,7 @@ Camera moves forward into the scene
         });
         const data = await res.json();
         if (data.success) {
-          log('✅ Chrome đã khởi động! Hãy login vào Google Labs Flow.', 'success');
+          log('✅ Chrome đã khởi động (temp session)! Hãy login vào Google Labs Flow.', 'success');
         } else {
           log(`❌ ${data.error}`, 'error');
         }

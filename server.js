@@ -951,13 +951,18 @@ async function launchChrome(profileName = 'default') {
     // Check if this profile already has a browser running
     if (browsers[profileName]) {
       log(`⚠️  Profile "${profileName}" already has a Chrome instance running`);
-      // Don't close it - allow parallel instances!
-      // Instead, just return the existing instance info
-      return {
-        success: true,
-        message: `Chrome already running for profile "${profileName}"`,
-        alreadyRunning: true
-      };
+      log(`🔄 Closing old instance and launching new one...`);
+
+      // Close old browser
+      try {
+        await browsers[profileName].browser.close();
+        log(`✓ Old Chrome instance closed`);
+      } catch (err) {
+        log(`⚠️ Failed to close old instance: ${err.message}`);
+      }
+
+      // Remove from browsers registry
+      delete browsers[profileName];
     }
 
     // Use persistent profile directory to save login session
@@ -1080,12 +1085,20 @@ async function captureToken() {
     }
 
     session.cookies = cookieString;
-    log('✓ Credentials extracted');
+
+    // Log Session Token
+    log('📋 Session Token captured:');
+    log(`   ${session.sessionToken ? session.sessionToken.substring(0, 50) + '...' : 'NONE'}`);
+
+    // Log Cookies
+    log('🍪 Cookies captured:');
+    log(`   ${cookieString ? cookieString.substring(0, 100) + '...' : 'NONE'}`);
 
     // Get access token (không dùng proxy khi bắt token từ Chrome)
     try {
       await getAccessToken(false, null, { skipProxy: true });
-      log(`✓ Authorization token obtained: ${session.accessToken ? session.accessToken.substring(0, 30) + '...' : 'NONE'}`);
+      log('🔑 Authorization token captured:');
+      log(`   Bearer ${session.accessToken ? session.accessToken.substring(0, 50) + '...' : 'NONE'}`);
     } catch (accessTokenError) {
       log(`⚠️ Failed to get access token: ${accessTokenError.message}`, 'warning');
       log(`⚠️ You can still save the lane, but authorization will be empty`, 'warning');
@@ -1093,7 +1106,7 @@ async function captureToken() {
 
     session.chromeReady = true;
 
-    log('✅ Token captured! System is ready.');
+    log('✅ Token captured successfully! All credentials ready.');
 
     // Return full token data including authorization
     return {
@@ -1636,8 +1649,19 @@ app.post('/api/lanes/save', async (req, res) => {
     // Also save to tokens.txt as backup (JSON format)
     await fs.writeFile(TOKENS_FILE, JSON.stringify(lanes, null, 2), 'utf-8');
 
-    log(`✅ Lane "${lane.name}" saved successfully to tokens.xlsx`);
-    res.json({ success: true, message: `Lane "${lane.name}" saved successfully` });
+    // Log saved data clearly
+    log(`✅ Lane "${lane.name}" ${isEdit ? 'updated' : 'added'} successfully!`);
+    log(`📁 Saved to: tokens.xlsx`);
+    log(`📋 Session Token: ${laneData.sessionToken ? laneData.sessionToken.substring(0, 30) + '...' : 'EMPTY'}`);
+    log(`🍪 Cookies: ${laneData.cookies ? laneData.cookies.substring(0, 50) + '...' : 'EMPTY'}`);
+    log(`🔑 Authorization: ${laneData.authorization ? laneData.authorization.substring(0, 40) + '...' : 'EMPTY'}`);
+    log(`🎬 Project ID: ${laneData.projectId || 'EMPTY'}`);
+    log(`🎨 Scene ID: ${laneData.sceneId || 'EMPTY'}`);
+
+    res.json({
+      success: true,
+      message: `Lane "${lane.name}" ${isEdit ? 'updated' : 'added'} and saved to tokens.xlsx successfully!`
+    });
 
   } catch (error) {
     log(`✗ Failed to save lane: ${error.message}`, 'error');
