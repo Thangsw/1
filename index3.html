@@ -497,32 +497,6 @@
           </div>
         </div>
 
-        <!-- Test Gen Video từ MediaID -->
-        <div class="section">
-          <h2>🧪 Test Gen Video từ MediaID</h2>
-
-          <div class="input-group">
-            <label>Start Image MediaID</label>
-            <textarea id="testStartMediaId" rows="3" style="font-family: monospace; font-size: 0.75em;">CAMaJDAyMTY1NzAxLTBkMmQtNDQzMy1iNTRkLWRmZjQ0YTE0OTNkZSIEQ0lvQiokNjYxZGZkNDYtMzQ2Yi00MWJlLTg1OTctMGRkOGJmZjQ0ZTMx</textarea>
-          </div>
-
-          <div class="input-group">
-            <label>End Image MediaID</label>
-            <textarea id="testEndMediaId" rows="3" style="font-family: monospace; font-size: 0.75em;">CAMaJDAyMTY1NzAxLTBkMmQtNDQzMy1iNTRkLWRmZjQ0YTE0OTNkZSIEQ0lzQiokYzJmOTcwYTctMmIwNS00Yjc2LWI3NzgtMWE5YWFlYTBlNTBm</textarea>
-          </div>
-
-          <div class="input-group">
-            <label>Prompt</label>
-            <input type="text" id="testPrompt" value="camera xoay vòng tròn" placeholder="Enter video prompt...">
-          </div>
-
-          <button class="btn btn-warning" onclick="testGenerateFromMediaId()">🚀 Test Generate</button>
-
-          <div id="testResult" style="display: none; margin-top: 8px; padding: 8px; border-radius: 4px; font-size: 0.8em; background: #f8f9fa; border: 1px solid #ddd; max-height: 200px; overflow-y: auto;">
-            <!-- Test result will show here -->
-          </div>
-        </div>
-
         <!-- Project Settings -->
         <div class="section">
           <h2>📁 Project Settings</h2>
@@ -781,11 +755,11 @@ Camera moves forward into the scene
           <h2>🧪 Test Gen Video từ MediaID</h2>
           <div class="input-group">
             <label>MediaID 1 (Start Image)</label>
-            <input type="text" id="testMediaId1" placeholder="CAMaJGIyODVlYjZkLTA2NTMtNGFkMi1hYTJiLTFhMTcwYTg5ZmZlNyIDQ0FnKiQxZWE1YWQ5OC1kZGYxLTQ3NDUtYTRhZS0wMGRlMjMyNmQ1ZDQ">
+            <input type="text" id="testMediaId1" value="CAMaJDAyMTY1NzAxLTBkMmQtNDQzMy1iNTRkLWRmZjQ0YTE0OTNkZSIEQ0lvQiokNjYxZGZkNDYtMzQ2Yi00MWJlLTg1OTctMGRkOGJmZjQ0ZTMx" style="font-family: monospace; font-size: 0.75em;">
           </div>
           <div class="input-group">
             <label>MediaID 2 (End Image)</label>
-            <input type="text" id="testMediaId2" placeholder="CAMaJGIyODVlYjZkLsad33fgsfhYTJiLTFhMTcwYTg5ZmZlNyIDQ0FnKiQxZWE1YWQ5OC1kZGYxLTQ3NDUtYTRhZS0wMGRlMjMyNmQ1ZDQ">
+            <input type="text" id="testMediaId2" value="CAMaJDAyMTY1NzAxLTBkMmQtNDQzMy1iNTRkLWRmZjQ0YTE0OTNkZSIEQ0lzQiokYzJmOTcwYTctMmIwNS00Yjc2LWI3NzgtMWE5YWFlYTBlNTBm" style="font-family: monospace; font-size: 0.75em;">
           </div>
           <div class="input-group">
             <label>Prompt</label>
@@ -3451,92 +3425,7 @@ Camera moves forward into the scene
       }
     }
 
-    // ============================================
-    // TEST: Generate video from MediaID (simplified version for quick testing)
-    // ============================================
-    async function testGenerateFromMediaId() {
-      const startMediaId = document.getElementById('testStartMediaId').value.trim();
-      const endMediaId = document.getElementById('testEndMediaId').value.trim();
-      const prompt = document.getElementById('testPrompt').value.trim();
-      const testResult = document.getElementById('testResult');
-
-      if (!startMediaId || !endMediaId) {
-        alert('⚠️ Please provide both Start and End MediaID!');
-        return;
-      }
-
-      if (!prompt) {
-        alert('⚠️ Please provide a prompt!');
-        return;
-      }
-
-      if (!state.projectId || !state.sceneId) {
-        alert('⚠️ Please setup Project ID and Scene ID first!');
-        return;
-      }
-
-      testResult.style.display = 'block';
-      testResult.innerHTML = '⏳ Testing video generation...';
-      log('🧪 TEST: Generating video from MediaID...', 'info');
-
-      try {
-        const aspectRatio = state.aspectRatio.replace('IMAGE_', 'VIDEO_') || 'VIDEO_ASPECT_RATIO_LANDSCAPE';
-        const seeds = [Math.floor(Math.random() * 65536), Math.floor(Math.random() * 65536)];
-
-        log(`🚀 Sending request to /api/veo3/generate-start-end`, 'info');
-        log(`   startMediaId: ${startMediaId.substring(0, 30)}...`, 'info');
-        log(`   endMediaId: ${endMediaId.substring(0, 30)}...`, 'info');
-        log(`   prompt: ${prompt}`, 'info');
-        log(`   projectId: ${state.projectId}`, 'info');
-        log(`   sceneId: ${state.sceneId}`, 'info');
-
-        const response = await fetch('/api/veo3/generate-start-end', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            projectId: state.projectId,
-            sceneId: state.sceneId,
-            startImageMediaId: startMediaId,
-            endImageMediaId: endMediaId,
-            prompt: prompt,
-            aspectRatio: aspectRatio,
-            seeds: seeds
-          })
-        });
-
-        const result = await response.json();
-        log(`📥 Response:`, 'info');
-        console.log(result);
-
-        if (result.success) {
-          testResult.style.background = 'rgba(52, 168, 83, 0.1)';
-          testResult.style.borderColor = '#56ab2f';
-          testResult.innerHTML = `
-            <div style="color: #56ab2f; font-weight: bold; margin-bottom: 6px;">✅ Success!</div>
-            <div style="font-size: 0.85em;">Generated ${result.operations?.length || 0} video variant(s)</div>
-            <pre style="margin-top: 6px; font-size: 0.7em; background: #1e1e1e; color: #d4d4d4; padding: 6px; border-radius: 4px; overflow-x: auto; max-height: 150px;">${JSON.stringify(result, null, 2)}</pre>
-          `;
-          log(`✅ TEST: Video generation started successfully!`, 'success');
-        } else {
-          testResult.style.background = 'rgba(235, 51, 73, 0.1)';
-          testResult.style.borderColor = '#eb3349';
-          testResult.innerHTML = `
-            <div style="color: #eb3349; font-weight: bold; margin-bottom: 6px;">❌ Failed!</div>
-            <div style="font-size: 0.85em;">Error: ${result.error || 'Unknown error'}</div>
-            <pre style="margin-top: 6px; font-size: 0.7em; background: #1e1e1e; color: #d4d4d4; padding: 6px; border-radius: 4px; overflow-x: auto;">${JSON.stringify(result, null, 2)}</pre>
-          `;
-          log(`❌ TEST: Video generation failed: ${result.error}`, 'error');
-        }
-      } catch (error) {
-        console.error('❌ Test error:', error);
-        testResult.style.background = 'rgba(235, 51, 73, 0.1)';
-        testResult.style.borderColor = '#eb3349';
-        testResult.innerHTML = `<div style="color: #eb3349; font-weight: bold;">❌ Error: ${error.message}</div>`;
-        log(`❌ TEST: Error - ${error.message}`, 'error');
-      }
-    }
-
-    // TEST: Generate video directly from mediaID (original version)
+    // TEST: Generate video directly from mediaID
     // ============================================
     async function testGenerateVideoFromMediaId() {
       const mediaId1 = document.getElementById('testMediaId1').value.trim();

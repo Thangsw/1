@@ -114,7 +114,7 @@ async function readTokensFromFile() {
         name: t.name || 'unnamed',
         sessionToken: t.sessionToken || '',
         cookies: t.cookies || '',
-        authorization: t.authorization || '',
+        authorization: t.authorization && t.authorization.trim() !== '' ? t.authorization.trim() : null,
         proxy: t.proxy || null,
         projectId: t.projectId || null,
         sceneId: t.sceneId || null,

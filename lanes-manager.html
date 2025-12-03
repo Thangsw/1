@@ -315,13 +315,20 @@
           </div>
 
           <div class="input-group">
-            <label>
-              <button type="button" class="btn primary small" onclick="captureToken()">
-                🔑 Bắt Token Tự Động
-              </button>
-            </label>
-            <div class="form-hint">Click để tự động lấy token + cookies + authorization từ Chrome</div>
+            <label style="font-weight: 600; color: #667eea;">🔧 Chrome & Token</label>
           </div>
+
+          <div class="input-group">
+            <label>Chrome Profile (optional)</label>
+            <input type="text" id="chromeProfile" placeholder="default, profile1, profile2...">
+            <div class="form-hint">Để trống = dùng profile mặc định</div>
+          </div>
+
+          <div class="input-group" style="display: flex; gap: 8px;">
+            <button type="button" class="btn primary small" onclick="launchChrome()" style="flex: 1;">🚀 Mở Chrome</button>
+            <button type="button" class="btn primary small" onclick="captureToken()" style="flex: 1;">🔑 Bắt Token</button>
+          </div>
+          <div class="form-hint">1. Mở Chrome → 2. Login vào Google Labs → 3. Bắt Token</div>
 
           <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;">
 
@@ -469,6 +476,29 @@
           showAlert(`❌ ${data.error}`, 'error');
         }
 
+      } catch (err) {
+        showAlert('Lỗi: ' + err.message, 'error');
+      }
+    }
+
+    // Launch Chrome
+    async function launchChrome() {
+      try {
+        const profile = document.getElementById('chromeProfile').value.trim() || '';
+        showAlert('🚀 Đang khởi động Chrome...', 'info');
+
+        const res = await fetch('/api/launch-chrome', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          showAlert('✅ Chrome đã khởi động! Hãy login vào Google Labs Flow.', 'success');
+        } else {
+          showAlert(`❌ ${data.error}`, 'error');
+        }
       } catch (err) {
         showAlert('Lỗi: ' + err.message, 'error');
       }
