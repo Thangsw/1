@@ -338,6 +338,9 @@ const getAccessToken = async (forceRefresh = false, tokenObj = null, options = {
       timeout: 30000
     });
 
+    log(`[DEBUG] Auth session response status: ${response.status}`);
+    log(`[DEBUG] Response has access_token: ${!!(response.data && response.data.access_token)}`);
+
     if (response.data && response.data.access_token) {
       targetToken.accessToken = response.data.access_token;
       targetToken.lastUpdate = Date.now();
@@ -346,11 +349,13 @@ const getAccessToken = async (forceRefresh = false, tokenObj = null, options = {
       if (!tokenObj) {
         session.accessToken = targetToken.accessToken;
         session.lastUpdate = targetToken.lastUpdate;
+        log(`[DEBUG] Synced to global session.accessToken: ${session.accessToken.substring(0, 30)}...`);
       }
 
       log(`✓ Access token obtained ${tokenName}: ${targetToken.accessToken.substring(0, 30)}...`);
       return targetToken.accessToken;
     } else {
+      log(`[DEBUG] Response data: ${JSON.stringify(response.data)}`, 'warning');
       throw new Error('No access token in response');
     }
   } catch (error) {
@@ -1078,7 +1083,14 @@ async function captureToken() {
     log('✓ Credentials extracted');
 
     // Get access token (không dùng proxy khi bắt token từ Chrome)
-    await getAccessToken(false, null, { skipProxy: true });
+    try {
+      await getAccessToken(false, null, { skipProxy: true });
+      log(`✓ Authorization token obtained: ${session.accessToken ? session.accessToken.substring(0, 30) + '...' : 'NONE'}`);
+    } catch (accessTokenError) {
+      log(`⚠️ Failed to get access token: ${accessTokenError.message}`, 'warning');
+      log(`⚠️ You can still save the lane, but authorization will be empty`, 'warning');
+    }
+
     session.chromeReady = true;
 
     log('✅ Token captured! System is ready.');
@@ -1088,8 +1100,8 @@ async function captureToken() {
       success: true,
       message: 'Token captured successfully',
       token: {
-        sessionToken: session.sessionToken,
-        cookies: session.cookies,
+        sessionToken: session.sessionToken || '',
+        cookies: session.cookies || '',
         authorization: session.accessToken ? `Bearer ${session.accessToken}` : ''
       }
     };
