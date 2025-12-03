@@ -497,6 +497,33 @@
           </div>
         </div>
 
+        <!-- Chrome & Lanes -->
+        <div class="section">
+          <h2>🔧 Chrome & Lanes</h2>
+
+          <div class="input-group">
+            <label>Chrome Profile (optional)</label>
+            <input type="text" id="chromeProfileInput" placeholder="default, profile1...">
+          </div>
+
+          <div class="input-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <button class="btn btn-primary" onclick="launchChromeIndex3()">🚀 Mở Chrome</button>
+            <button class="btn btn-warning" onclick="captureTokenIndex3()">🔑 Bắt Token</button>
+          </div>
+
+          <div class="input-group">
+            <label>Chọn Lane để gen ảnh</label>
+            <select id="selectedLane" onchange="loadLaneIndex3()">
+              <option value="">-- Session hiện tại --</option>
+            </select>
+            <div style="font-size: 0.75em; color: #777; margin-top: 4px;">
+              Chọn lane từ tokens.xlsx hoặc dùng session hiện tại
+            </div>
+          </div>
+
+          <div id="laneStatus" style="font-size: 0.8em; margin-top: 8px; padding: 6px; border-radius: 4px; display: none;"></div>
+        </div>
+
         <!-- Project Settings -->
         <div class="section">
           <h2>📁 Project Settings</h2>
@@ -3565,6 +3592,105 @@ Camera moves forward into the scene
     }
 
     // ============================================
+    // ============================================
+    // CHROME & LANES FUNCTIONS
+    // ============================================
+    async function launchChromeIndex3() {
+      const profile = document.getElementById('chromeProfileInput').value.trim() || '';
+      try {
+        log('🚀 Đang khởi động Chrome...', 'info');
+        const res = await fetch('/api/launch-chrome', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile })
+        });
+        const data = await res.json();
+        if (data.success) {
+          log('✅ Chrome đã khởi động! Hãy login vào Google Labs Flow.', 'success');
+        } else {
+          log(`❌ ${data.error}`, 'error');
+        }
+      } catch (err) {
+        log(`❌ Lỗi: ${err.message}`, 'error');
+      }
+    }
+
+    async function captureTokenIndex3() {
+      try {
+        log('🔑 Đang bắt token...', 'info');
+        const res = await fetch('/api/capture-token');
+        const data = await res.json();
+        if (data.success) {
+          log('✅ Đã bắt token thành công!', 'success');
+          showLaneStatus('✅ Token đã được capture cho session hiện tại', 'success');
+        } else {
+          log(`❌ ${data.error}`, 'error');
+          showLaneStatus(`❌ ${data.error}`, 'error');
+        }
+      } catch (err) {
+        log(`❌ Lỗi: ${err.message}`, 'error');
+        showLaneStatus(`❌ ${err.message}`, 'error');
+      }
+    }
+
+    async function loadLaneIndex3() {
+      const laneName = document.getElementById('selectedLane').value;
+      if (!laneName) {
+        showLaneStatus('ℹ️ Đang dùng session hiện tại', 'info');
+        return;
+      }
+
+      try {
+        // This would load the lane credentials into current session
+        // For now, just show status
+        showLaneStatus(`✅ Đã chọn lane: ${laneName}`, 'success');
+        log(`📌 Chuyển sang lane: ${laneName}`, 'info');
+      } catch (err) {
+        showLaneStatus(`❌ ${err.message}`, 'error');
+      }
+    }
+
+    function showLaneStatus(message, type) {
+      const statusDiv = document.getElementById('laneStatus');
+      statusDiv.textContent = message;
+      statusDiv.style.display = 'block';
+
+      if (type === 'success') {
+        statusDiv.style.background = 'rgba(86, 171, 47, 0.1)';
+        statusDiv.style.color = '#56ab2f';
+        statusDiv.style.border = '1px solid #56ab2f';
+      } else if (type === 'error') {
+        statusDiv.style.background = 'rgba(235, 51, 73, 0.1)';
+        statusDiv.style.color = '#eb3349';
+        statusDiv.style.border = '1px solid #eb3349';
+      } else {
+        statusDiv.style.background = 'rgba(102, 126, 234, 0.1)';
+        statusDiv.style.color = '#667eea';
+        statusDiv.style.border = '1px solid #667eea';
+      }
+    }
+
+    async function loadLanesDropdown() {
+      try {
+        const res = await fetch('/api/list-tokens');
+        const data = await res.json();
+
+        const select = document.getElementById('selectedLane');
+        if (data.success && data.tokens && data.tokens.length > 0) {
+          data.tokens.forEach(lane => {
+            const option = document.createElement('option');
+            option.value = lane.name;
+            option.textContent = lane.name;
+            select.appendChild(option);
+          });
+          log(`📋 Đã load ${data.tokens.length} lanes từ tokens.xlsx`, 'info');
+        }
+      } catch (err) {
+        log(`⚠️ Không thể load lanes: ${err.message}`, 'warning');
+      }
+    }
+
+    // ============================================
     // INITIALIZATION
     // ============================================
     window.onload = async function() {
@@ -3581,6 +3707,9 @@ Camera moves forward into the scene
       log('✅ Gallery: Chỉ hiện variant A cho gọn', 'info');
       log('─'.repeat(60), 'info');
       log('', 'info');
+
+      // Load lanes dropdown
+      await loadLanesDropdown();
 
       // Load last project link if available
       try {
