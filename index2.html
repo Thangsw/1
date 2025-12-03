@@ -1016,14 +1016,10 @@
             </div>
 
             <div class="sidebar-body">
-                <!-- Status & Actions -->
-                <div style="margin-bottom: 24px;">
-                    <span id="statusBadge" class="status-badge waiting">Chờ kết nối</span>
-                    <div style="display: flex; gap: 8px; margin-top: 12px;">
-                        <button class="btn btn-primary" onclick="launchChrome()" style="flex: 1;">🚀 Khởi động</button>
-                        <button class="btn btn-secondary" onclick="captureToken()" id="captureBtn" disabled>🔑 Token</button>
-                        <button class="btn btn-secondary" onclick="resetSession()">🔄</button>
-                    </div>
+                <!-- Quick Links -->
+                <div style="margin-bottom: 24px; display: flex; gap: 8px;">
+                    <a href="lanes-manager.html" class="btn btn-primary" style="flex: 1; text-decoration: none; text-align: center;">⚙️ Quản lý Lanes</a>
+                    <a href="index4.html" class="btn btn-secondary" style="flex: 1; text-decoration: none; text-align: center;">🧪 Test (Index4)</a>
                 </div>
 
                 <!-- ═══════════════════════════════════════ -->
@@ -1476,6 +1472,50 @@
                                 </div>
                             </div>
                         </div>
+
+                        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+
+                        <!-- Test Gen Video từ MediaID -->
+                        <div style="margin-bottom: 16px; padding: 12px; background: rgba(249, 171, 0, 0.05); border: 2px solid var(--warning-color); border-radius: 6px;">
+                            <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-primary);">
+                                🧪 Test Gen Video từ MediaID
+                            </label>
+                            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 8px;">
+                                Test nhanh video generation với 2 MediaID có sẵn
+                            </div>
+
+                            <div style="margin-bottom: 8px;">
+                                <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Start Image MediaID:</label>
+                                <input type="text" id="testStartMediaId"
+                                    value="CAMaJDAyMTY1NzAxLTBkMmQtNDQzMy1iNTRkLWRmZjQ0YTE0OTNkZSIEQ0lvQiokNjYxZGZkNDYtMzQ2Yi00MWJlLTg1OTctMGRkOGJmZjQ0ZTMx"
+                                    style="width: 100%; padding: 6px; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 10px; font-family: monospace;">
+                            </div>
+
+                            <div style="margin-bottom: 8px;">
+                                <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">End Image MediaID:</label>
+                                <input type="text" id="testEndMediaId"
+                                    value="CAMaJDAyMTY1NzAxLTBkMmQtNDQzMy1iNTRkLWRmZjQ0YTE0OTNkZSIEQ0lzQiokYzJmOTcwYTctMmIwNS00Yjc2LWI3NzgtMWE5YWFlYTBlNTBm"
+                                    style="width: 100%; padding: 6px; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 10px; font-family: monospace;">
+                            </div>
+
+                            <div style="margin-bottom: 8px;">
+                                <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Prompt:</label>
+                                <input type="text" id="testPrompt"
+                                    value="camera xoay vòng tròn"
+                                    placeholder="Enter video prompt..."
+                                    style="width: 100%; padding: 6px; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 11px;">
+                            </div>
+
+                            <button class="btn btn-warning" onclick="testGenerateFromMediaId()" style="width: 100%; font-size: 12px; padding: 8px;">
+                                🚀 Test Generate
+                            </button>
+
+                            <div id="testResult" style="display: none; margin-top: 8px; padding: 8px; background: var(--bg-main); border-radius: 4px; font-size: 11px; color: var(--text-primary); border: 1px solid var(--border-color);">
+                                <!-- Test result will show here -->
+                            </div>
+                        </div>
+
+                        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
 
                         <!-- Actions -->
                         <div style="display: flex; flex-direction: column; gap: 8px;">
@@ -5983,6 +6023,87 @@
             }
 
             renderVideoScenes();
+        }
+
+        // Test generate video from MediaID
+        async function testGenerateFromMediaId() {
+            console.log('🧪 [testGenerateFromMediaId] Starting test...');
+
+            const startMediaId = document.getElementById('testStartMediaId').value.trim();
+            const endMediaId = document.getElementById('testEndMediaId').value.trim();
+            const prompt = document.getElementById('testPrompt').value.trim();
+            const testResult = document.getElementById('testResult');
+
+            if (!startMediaId || !endMediaId) {
+                alert('⚠️ Please provide both Start and End MediaID!');
+                return;
+            }
+
+            if (!prompt) {
+                alert('⚠️ Please provide a prompt!');
+                return;
+            }
+
+            if (!currentProjectId || !currentSceneId) {
+                alert('⚠️ Please setup Project ID and Scene ID first!');
+                return;
+            }
+
+            testResult.style.display = 'block';
+            testResult.innerHTML = '⏳ Testing video generation...';
+
+            try {
+                const aspectRatio = document.getElementById('videoAspectRatio').value || 'VIDEO_ASPECT_RATIO_LANDSCAPE';
+                const seeds = [Math.floor(Math.random() * 65536), Math.floor(Math.random() * 65536)];
+
+                console.log('🚀 Sending request to /api/veo3/generate-start-end');
+                console.log('   startMediaId:', startMediaId);
+                console.log('   endMediaId:', endMediaId);
+                console.log('   prompt:', prompt);
+                console.log('   projectId:', currentProjectId);
+                console.log('   sceneId:', currentSceneId);
+                console.log('   aspectRatio:', aspectRatio);
+
+                const response = await fetch('/api/veo3/generate-start-end', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        projectId: currentProjectId,
+                        sceneId: currentSceneId,
+                        startImageMediaId: startMediaId,
+                        endImageMediaId: endMediaId,
+                        prompt: prompt,
+                        aspectRatio: aspectRatio,
+                        seeds: seeds
+                    })
+                });
+
+                const result = await response.json();
+                console.log('📥 Response:', result);
+
+                if (result.success) {
+                    testResult.style.background = 'rgba(52, 168, 83, 0.1)';
+                    testResult.style.borderColor = 'var(--success-color)';
+                    testResult.innerHTML = `
+                        ✅ <strong>Success!</strong><br>
+                        Generated ${result.operations?.length || 0} video variant(s)<br>
+                        <pre style="margin-top: 6px; font-size: 10px; background: var(--bg-card); padding: 6px; border-radius: 4px; overflow-x: auto; max-height: 200px;">${JSON.stringify(result, null, 2)}</pre>
+                    `;
+                } else {
+                    testResult.style.background = 'rgba(234, 67, 53, 0.1)';
+                    testResult.style.borderColor = 'var(--danger-color)';
+                    testResult.innerHTML = `
+                        ❌ <strong>Failed!</strong><br>
+                        Error: ${result.error || 'Unknown error'}<br>
+                        <pre style="margin-top: 6px; font-size: 10px; background: var(--bg-card); padding: 6px; border-radius: 4px; overflow-x: auto;">${JSON.stringify(result, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                console.error('❌ Test error:', error);
+                testResult.style.background = 'rgba(234, 67, 53, 0.1)';
+                testResult.style.borderColor = 'var(--danger-color)';
+                testResult.innerHTML = `❌ <strong>Error:</strong> ${error.message}`;
+            }
         }
 
         // Generate all videos
