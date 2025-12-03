@@ -114,6 +114,7 @@ async function readTokensFromFile() {
         name: t.name || 'unnamed',
         sessionToken: t.sessionToken || '',
         cookies: t.cookies || '',
+        authorization: t.authorization || '',
         proxy: t.proxy || null,
         projectId: t.projectId || null,
         sceneId: t.sceneId || null,
@@ -1081,7 +1082,17 @@ async function captureToken() {
     session.chromeReady = true;
 
     log('✅ Token captured! System is ready.');
-    return { success: true, message: 'Token captured successfully' };
+
+    // Return full token data including authorization
+    return {
+      success: true,
+      message: 'Token captured successfully',
+      token: {
+        sessionToken: session.sessionToken,
+        cookies: session.cookies,
+        authorization: session.accessToken ? `Bearer ${session.accessToken}` : ''
+      }
+    };
 
   } catch (error) {
     log(`✗ Failed to capture token: ${error.message}`);
@@ -1402,6 +1413,7 @@ app.post('/api/tokens/reload-xlsx', async (req, res) => {
         name,
         sessionToken: String(row.sessionToken || row.SessionToken || '').trim() || undefined,
         cookies: String(row.cookies || row.Cookies || '').trim() || undefined,
+        authorization: String(row.authorization || row.Authorization || '').trim() || undefined,
         proxy: String(row.proxy || row.Proxy || '').trim() || undefined,
         projectId: String(row.projectId || row.ProjectId || '').trim() || undefined,
         sceneId: String(row.sceneId || row.SceneId || '').trim() || undefined,
@@ -1571,7 +1583,7 @@ app.post('/api/lanes/save', async (req, res) => {
       name: lane.name,
       sessionToken: lane.sessionToken || '',
       cookies: lane.cookies || '',
-      proxy: lane.proxy || '',
+      authorization: lane.authorization || '',
       projectId: lane.projectId || '',
       sceneId: lane.sceneId || '',
       savedAt: new Date().toISOString()
@@ -1602,7 +1614,7 @@ app.post('/api/lanes/save', async (req, res) => {
       { wch: 20 },  // name
       { wch: 80 },  // sessionToken
       { wch: 100 }, // cookies
-      { wch: 30 },  // proxy
+      { wch: 100 }, // authorization
       { wch: 40 },  // projectId
       { wch: 40 }   // sceneId
     ];
@@ -1617,6 +1629,31 @@ app.post('/api/lanes/save', async (req, res) => {
 
   } catch (error) {
     log(`✗ Failed to save lane: ${error.message}`, 'error');
+    res.json({ success: false, error: error.message });
+  }
+});
+
+// Get full lane data by name
+app.get('/api/lanes/get', async (req, res) => {
+  try {
+    const { name } = req.query;
+
+    if (!name) {
+      return res.json({ success: false, error: 'Lane name is required' });
+    }
+
+    // Read all lanes from file
+    const lanes = await readTokensFromFile();
+    const lane = lanes.find(l => l.name === name);
+
+    if (!lane) {
+      return res.json({ success: false, error: `Lane "${name}" not found` });
+    }
+
+    res.json({ success: true, lane });
+
+  } catch (error) {
+    log(`✗ Failed to get lane: ${error.message}`, 'error');
     res.json({ success: false, error: error.message });
   }
 });
@@ -2871,7 +2908,17 @@ app.post('/api/veo3/upload-cropped-image', async (req, res) => {
 
     log(`📤 [Lane: ${laneName}] Uploading cropped image to Veo3 (step 2/2)...`);
 
-    const token = await getAccessToken(false, tokenObj);
+    // CRITICAL: Use authorization from tokenObj (lane data) if available
+    let token;
+    if (tokenObj.authorization) {
+      // Use saved authorization token from lane
+      token = tokenObj.authorization.replace(/^Bearer\s+/i, '').trim();
+      log(`🔑 [Lane: ${laneName}] Using authorization from lane data`);
+    } else {
+      // Fallback: Get fresh access token
+      token = await getAccessToken(false, tokenObj);
+      log(`🔑 [Lane: ${laneName}] Using fresh access token from getAccessToken()`);
+    }
 
     // Generate sessionId
     const sessionId = generateSessionId();
@@ -2958,8 +3005,17 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
 
     log(`🎬 [Lane: ${laneName}] Generating start-end video: "${prompt.substring(0, 50)}..."`);
 
-    // FORCE refresh access token for Veo3 video calls (avoid using stale token cache)
-    const token = await getAccessToken(true, tokenObj);
+    // CRITICAL: Use authorization from tokenObj (lane data) if available
+    let token;
+    if (tokenObj.authorization) {
+      // Use saved authorization token from lane
+      token = tokenObj.authorization.replace(/^Bearer\s+/i, '').trim();
+      log(`🔑 [Lane: ${laneName}] Using authorization from lane data`);
+    } else {
+      // Fallback: Get fresh access token
+      token = await getAccessToken(true, tokenObj);
+      log(`🔑 [Lane: ${laneName}] Using fresh access token from getAccessToken()`);
+    }
 
     const proxyString = tokenObj.proxy; // CRITICAL: Use proxy from tokenObj for multi-lane
 

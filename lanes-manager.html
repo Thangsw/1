@@ -309,21 +309,21 @@
           </div>
 
           <div class="input-group">
+            <label>Authorization (Access Token) *</label>
+            <textarea id="authorization" placeholder="Bearer ya29..." rows="3" required></textarea>
+            <div class="form-hint">Authorization token để gen video</div>
+          </div>
+
+          <div class="input-group">
             <label>
               <button type="button" class="btn primary small" onclick="captureToken()">
                 🔑 Bắt Token Tự Động
               </button>
             </label>
-            <div class="form-hint">Click để tự động lấy token từ Chrome đang chạy</div>
+            <div class="form-hint">Click để tự động lấy token + cookies + authorization từ Chrome</div>
           </div>
 
           <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;">
-
-          <div class="input-group">
-            <label>Proxy (tuỳ chọn)</label>
-            <input type="text" id="proxy" placeholder="1.52.195.100:41744:username:password">
-            <div class="form-hint">Format: ip:port:user:pass (để trống nếu không dùng proxy)</div>
-          </div>
 
           <div class="input-group">
             <label>Project ID (tuỳ chọn)</label>
@@ -381,22 +381,27 @@
     function createLaneCard(lane) {
       const div = document.createElement('div');
       div.className = 'lane-card';
+      div.style.cursor = 'pointer';
 
-      const proxyTag = lane.hasProxy
-        ? `<span class="lane-tag proxy">🌐 Proxy</span>`
-        : `<span class="lane-tag no-proxy">🏠 Local</span>`;
+      // Click vào lane để edit
+      div.addEventListener('click', (e) => {
+        // Không trigger nếu click vào button
+        if (!e.target.closest('button')) {
+          editLane(lane.name);
+        }
+      });
 
       div.innerHTML = `
         <div class="lane-header">
           <div class="lane-name">🎯 ${lane.name}</div>
           <div class="lane-actions">
-            <button class="btn primary small" onclick="editLane('${lane.name}')">✏️ Sửa</button>
-            <button class="btn danger small" onclick="deleteLane('${lane.name}')">🗑️ Xóa</button>
+            <button class="btn primary small" onclick="editLane('${lane.name}'); event.stopPropagation();">✏️ Sửa</button>
+            <button class="btn danger small" onclick="deleteLane('${lane.name}'); event.stopPropagation();">🗑️ Xóa</button>
           </div>
         </div>
         <div class="lane-info">
-          <div>${proxyTag}</div>
           ${lane.projectId ? `<div>📦 Project: ${lane.projectId.substring(0, 20)}...</div>` : ''}
+          ${lane.sceneId ? `<div>🎬 Scene: ${lane.sceneId.substring(0, 20)}...</div>` : ''}
           ${lane.savedAt ? `<div>🕒 Saved: ${new Date(lane.savedAt).toLocaleString('vi-VN')}</div>` : ''}
         </div>
       `;
@@ -407,35 +412,28 @@
     // Edit lane
     async function editLane(name) {
       try {
-        // Fetch full lane data
-        const res = await fetch('/api/list-tokens');
+        // Fetch full lane data from server
+        const res = await fetch(`/api/lanes/get?name=${encodeURIComponent(name)}`);
         const data = await res.json();
-        const lane = data.tokens.find(l => l.name === name);
 
-        if (!lane) {
+        if (!data.success || !data.lane) {
           showAlert('Lane not found', 'error');
           return;
         }
 
-        // Fetch full details from tokens.xlsx
-        const fullRes = await fetch('/api/list-tokens');
-        const fullData = await fullRes.json();
-        const fullLane = fullData.tokens.find(l => l.name === name);
+        const lane = data.lane;
 
         // Set form to edit mode
         currentEditingLane = name;
         document.getElementById('formTitle').textContent = `✏️ Sửa Lane: ${name}`;
 
-        // Fill form
+        // Fill form với full data
         document.getElementById('laneName').value = name;
         document.getElementById('laneName').disabled = true; // Can't change name when editing
 
-        // We need to fetch sessionToken and cookies from the actual file
-        // For now, just show placeholders
-        document.getElementById('sessionToken').placeholder = 'Token hiện tại (để trống nếu không đổi)';
-        document.getElementById('cookies').placeholder = 'Cookies hiện tại (để trống nếu không đổi)';
-
-        document.getElementById('proxy').value = lane.proxy || '';
+        document.getElementById('sessionToken').value = lane.sessionToken || '';
+        document.getElementById('cookies').value = lane.cookies || '';
+        document.getElementById('authorization').value = lane.authorization || '';
         document.getElementById('projectId').value = lane.projectId || '';
         document.getElementById('sceneId').value = lane.sceneId || '';
 
@@ -486,14 +484,15 @@
 
         if (data.success) {
           // Fill form with captured token
-          document.getElementById('sessionToken').value = data.token.sessionToken;
-          document.getElementById('cookies').value = data.token.cookies;
+          document.getElementById('sessionToken').value = data.token.sessionToken || '';
+          document.getElementById('cookies').value = data.token.cookies || '';
+          document.getElementById('authorization').value = data.token.authorization || '';
 
           // Copy to clipboard
-          const textToCopy = `sessionToken: ${data.token.sessionToken}\n\ncookies: ${data.token.cookies}`;
+          const textToCopy = `sessionToken: ${data.token.sessionToken}\n\ncookies: ${data.token.cookies}\n\nauthorization: ${data.token.authorization}`;
           await navigator.clipboard.writeText(textToCopy);
 
-          showAlert('✅ Đã bắt token và copy vào clipboard!', 'success');
+          showAlert('✅ Đã bắt token + authorization và copy vào clipboard!', 'success');
         } else {
           showAlert(`❌ ${data.error}`, 'error');
         }
@@ -511,13 +510,13 @@
         name: document.getElementById('laneName').value.trim(),
         sessionToken: document.getElementById('sessionToken').value.trim(),
         cookies: document.getElementById('cookies').value.trim(),
-        proxy: document.getElementById('proxy').value.trim(),
+        authorization: document.getElementById('authorization').value.trim(),
         projectId: document.getElementById('projectId').value.trim(),
         sceneId: document.getElementById('sceneId').value.trim()
       };
 
-      if (!lane.name || !lane.sessionToken || !lane.cookies) {
-        showAlert('Vui lòng điền đầy đủ: Tên, Session Token, và Cookies', 'error');
+      if (!lane.name || !lane.sessionToken || !lane.cookies || !lane.authorization) {
+        showAlert('Vui lòng điền đầy đủ: Tên, Session Token, Cookies, và Authorization', 'error');
         return;
       }
 
@@ -553,6 +552,7 @@
       document.getElementById('submitBtn').textContent = '💾 Lưu Lane';
       document.getElementById('sessionToken').placeholder = 'eyJh...';
       document.getElementById('cookies').placeholder = '__Secure-next-auth.session-token=...';
+      document.getElementById('authorization').placeholder = 'Bearer ya29...';
       currentEditingLane = null;
       hideAlert();
     }
