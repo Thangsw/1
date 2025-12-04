@@ -1007,6 +1007,13 @@ async function downloadBlobImage(blobUrl, filepath) {
 // ============================================
 
 async function launchChrome(profileName = 'default') {
+  // CRITICAL: If profileName is empty/blank (Add New mode), create a temp profile
+  // This ensures Chrome opens clean without any previous login
+  if (!profileName || profileName.trim() === '') {
+    profileName = `temp_${Date.now()}`;
+    log(`🆕 Add New mode detected - using temp profile: ${profileName}`);
+  }
+
   log(`🚀 Launching Chrome with Puppeteer... (Profile: ${profileName})`);
 
   try {
