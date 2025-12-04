@@ -298,6 +298,13 @@ Slow motion close-up">Camera zoom in -out mượt mà</textarea>
             <option value="VIDEO_ASPECT_RATIO_SQUARE">Square (1:1)</option>
           </select>
         </div>
+        <div class="input-group">
+          <label>Prompt video</label>
+          <input id="fixedVideoPrompt" type="text" value="camera zoom vào" placeholder="camera zoom vào">
+        </div>
+        <div style="margin-top:8px;">
+          <button class="btn" onclick="runFixedMediaIdVideoTest()">🎬 TEST VIDEO (MediaID cố định)</button>
+        </div>
         <div class="status-line" id="testStatus">Chưa chạy test. Chọn luồng và nhấn nút TEST.</div>
       </div>
 
@@ -576,6 +583,59 @@ Slow motion close-up">Camera zoom in -out mượt mà</textarea>
       }
     }
 
+    async function runFixedMediaIdVideoTest() {
+      const selectedLanes = [...document.querySelectorAll('.lane-checkbox:checked')].map(c => c.value);
+      const image1 = document.getElementById('image1').value.trim();
+      const image2 = document.getElementById('image2').value.trim();
+      const prompt = document.getElementById('fixedVideoPrompt').value.trim();
+      const aspectRatio = document.getElementById('videoAspect').value;
+      const testStatus = document.getElementById('testStatus');
+
+      if (selectedLanes.length === 0) {
+        alert('Chọn ít nhất 1 luồng để test!');
+        return;
+      }
+
+      if (!prompt || !image1 || !image2) {
+        alert('Nhập đầy đủ prompt và 2 mediaId ảnh!');
+        return;
+      }
+
+      // Reset results
+      videoResults.clear();
+      updateVideoResultsUI();
+
+      testStatus.textContent = `⏳ Đang gen ${selectedLanes.length} video với MediaID cố định...`;
+      appendLog(`🚀 Bắt đầu test MediaID cố định với ${selectedLanes.length} lanes`, 'info');
+      appendLog(`Prompt: "${prompt}"`, 'info');
+      appendLog(`Start: ${image1.substring(0, 40)}...`, 'info');
+      appendLog(`End: ${image2.substring(0, 40)}...`, 'info');
+
+      // Run all lanes in parallel
+      const allPromises = selectedLanes.map(laneName =>
+        generateVideoForLane(laneName, prompt, image1, image2, aspectRatio)
+      );
+
+      try {
+        await Promise.allSettled(allPromises);
+
+        // Check results
+        const successes = [...videoResults.values()].filter(r => r.status === 'success').length;
+        const errors = [...videoResults.values()].filter(r => r.status === 'error').length;
+        const total = selectedLanes.length;
+
+        testStatus.textContent = `✅ Hoàn thành: ${successes}/${total} thành công, ${errors} lỗi`;
+        appendLog(`✅ Test hoàn thành: ${successes}/${total} videos OK`, successes === total ? 'success' : 'warn');
+
+        if (errors === 0) {
+          appendLog(`🎉 PERFECT! Tất cả ${total} video gen thành công!`, 'success');
+        }
+      } catch (err) {
+        testStatus.textContent = '❌ Lỗi test';
+        appendLog('❌ Lỗi test: ' + err.message, 'error');
+      }
+    }
+
     async function runMultiLaneVideoTest() {
       const selectedLanes = [...document.querySelectorAll('.lane-checkbox:checked')].map(c => c.value);
       const promptsText = document.getElementById('videoPrompts').value.trim();
@@ -765,6 +825,7 @@ Slow motion close-up">Camera zoom in -out mượt mà</textarea>
     window.loadLanePool = loadLanePool;
     window.runMultiLaneImageTest = runMultiLaneImageTest;
     window.runMultiLaneVideoTest = runMultiLaneVideoTest;
+    window.runFixedMediaIdVideoTest = runFixedMediaIdVideoTest;
     window.toggleSelectAllLanes = toggleSelectAllLanes;
   </script>
 </body>

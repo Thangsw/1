@@ -2049,10 +2049,25 @@ app.post('/api/generate', async (req, res) => {
 });
 
 app.post('/api/edit', async (req, res) => {
-  const { prompt, captionPrompt, referenceImage, aspectRatio, generationId, seed } = req.body;
+  const { prompt, captionPrompt, referenceImage, aspectRatio, generationId, seed, laneName } = req.body;
 
   if (!prompt || !referenceImage) {
     return res.json({ success: false, error: 'Prompt and reference image are required' });
+  }
+
+  // CRITICAL: Read token from Excel if laneName provided
+  let token = null;
+  if (laneName) {
+    try {
+      const allTokens = await readTokensFromFile();
+      token = allTokens.find(t => t.name === laneName);
+      if (!token) {
+        return res.json({ success: false, error: `Lane "${laneName}" not found in tokens.xlsx` });
+      }
+      log(`🎨 Editing image with lane: ${laneName} (from Excel)`);
+    } catch (err) {
+      return res.json({ success: false, error: `Failed to read lane: ${err.message}` });
+    }
   }
 
   // CRITICAL: captionPrompt is the prompt of the PREVIOUS image (reference)
@@ -2094,10 +2109,25 @@ app.post('/api/edit', async (req, res) => {
       }
     }
 
-    // Ensure we have access token
-    if (!session.accessToken || Date.now() - session.lastUpdate > 30 * 60 * 1000) {
-      await getAccessToken();
+    // CRITICAL: Get accessToken and cookies from token (lane) if available
+    let accessToken, cookies;
+    if (token && token.authorization) {
+      // Use authorization from lane
+      accessToken = token.authorization.replace(/^Bearer\s+/i, '').trim();
+      cookies = token.cookies || session.cookies;
+      log(`✓ Using authorization from lane: ${accessToken.substring(0, 30)}...`);
+    } else {
+      // Fallback to session
+      if (!session.accessToken || Date.now() - session.lastUpdate > 30 * 60 * 1000) {
+        await getAccessToken();
+      }
+      accessToken = session.accessToken;
+      cookies = session.cookies;
     }
+
+    // Generate workflowId and sessionId dynamically (no Chrome needed!)
+    const workflowId = `workflow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const sessionId = `;${Date.now()}`;
 
     const resolvedAspectRatio = aspectRatio || 'IMAGE_ASPECT_RATIO_LANDSCAPE';
 
@@ -2108,25 +2138,27 @@ app.post('/api/edit', async (req, res) => {
     // CRITICAL: For editImage API:
     // - caption: prompt of PREVIOUS image (reference)
     // - userInstruction: CURRENT prompt (new instruction)
-    // - seed: null (not used in edit mode)
+    // - DO NOT include seed or safetyMode fields (will be handled in meta)
     const editInput = {
       caption: caption,  // Prompt of previous image
       userInstruction: userInstruction,  // Current prompt
-      originalMediaGenerationId: generationId || null,
-      seed: null,  // CRITICAL: Always null for editImage
-      safetyMode: null,  // CRITICAL: Must be null, not SAFETY_MODE_UNSPECIFIED
       mediaInput: {
         mediaCategory: 'MEDIA_CATEGORY_BOARD',
         rawBytes: rawBytesWithPrefix  // CRITICAL: Must include data:image/jpeg;base64, prefix
       }
     };
 
+    // Add originalMediaGenerationId only if provided
+    if (generationId) {
+      editInput.originalMediaGenerationId = generationId;
+    }
+
     const payload = {
       json: {
         clientContext: {
-          workflowId: session.workflowId,
+          workflowId: workflowId,
           tool: 'BACKBONE',
-          sessionId: session.sessionId
+          sessionId: sessionId
         },
         imageModelSettings: {
           imageModel: 'GEM_PIX',  // Use GEM_PIX for editImage
@@ -2153,7 +2185,7 @@ app.post('/api/edit', async (req, res) => {
       payload,
       {
         headers: {
-          'Cookie': session.cookies,
+          'Cookie': cookies,
           'Content-Type': 'application/json',
           'Origin': 'https://labs.google',
           'Referer': 'https://labs.google/fx/tools/whisk/project',
