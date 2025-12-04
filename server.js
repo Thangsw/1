@@ -3265,8 +3265,10 @@ app.post('/api/veo3/upload-cropped-image', async (req, res) => {
 
     log(`📐 [Lane: ${laneName}] Aspect ratio: ${imageAspectRatio} (${width}x${height})`);
 
-    // STEP 1 & 2: Submit batch logs (PINHOLE_UPLOAD_IMAGE + PINHOLE_UPLOAD_IMAGE_TO_CROP)
-    await submitUploadImageLogs(token, sessionId, width, height);
+    // STEP 1 & 2: Submit batch logs (OPTIONAL - skip if causes issues)
+    // Batch logs are telemetry only, not required for upload to work
+    // Commenting out to avoid 401/500 errors
+    // await submitUploadImageLogs(token, sessionId, width, height);
 
     // STEP 3: Upload cropped image via v1:uploadUserImage
     const proxyString = tokenObj.proxy; // CRITICAL: Use proxy from tokenObj
