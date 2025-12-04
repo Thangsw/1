@@ -2550,7 +2550,7 @@ function cryptoRandomId() {
 }
 
 // Helper: submit batch log - ĐÚNG CẤU TRÚC API
-async function submitBatchLog(token, eventName, mode, queryId, aspectRatio = 'VIDEO_ASPECT_RATIO_LANDSCAPE') {
+async function submitBatchLog(token, cookies, eventName, mode, queryId, aspectRatio = 'VIDEO_ASPECT_RATIO_LANDSCAPE') {
   try {
     const sessionId = generateSessionId();
 
@@ -2580,6 +2580,7 @@ async function submitBatchLog(token, eventName, mode, queryId, aspectRatio = 'VI
       {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Cookie': cookies,
           'Content-Type': 'application/json',
           'Referer': 'https://labs.google/fx/tools/flow',
           'Origin': 'https://labs.google'
@@ -2592,7 +2593,7 @@ async function submitBatchLog(token, eventName, mode, queryId, aspectRatio = 'VI
 }
 
 // Helper: submit video timer log - ĐÚNG CẤU TRÚC API
-async function submitVideoTimerLog(token, timerId) {
+async function submitVideoTimerLog(token, cookies, timerId) {
   try {
     const sessionId = generateSessionId();
 
@@ -2620,6 +2621,7 @@ async function submitVideoTimerLog(token, timerId) {
       {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Cookie': cookies,
           'Content-Type': 'application/json',
           'Referer': 'https://labs.google/fx/tools/flow',
           'Origin': 'https://labs.google'
@@ -3217,16 +3219,17 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
     }
 
     const proxyString = tokenObj.proxy; // CRITICAL: Use proxy from tokenObj for multi-lane
+    const cookies = tokenObj.cookies || session.cookies; // CRITICAL: Get cookies from tokenObj
 
     // Generate unique IDs for logs
     const sessionId = generateSessionId();
     const queryId = `PINHOLE_MAIN_VIDEO_GENERATION_CACHE_ID${cryptoRandomId()}`;
     const timerId = `VIDEO_CREATION_TO_VIDEO_COMPLETION${cryptoRandomId()}`;
 
-    // Send 3 logs before generation (với aspectRatio)
-    await submitBatchLog(token, 'VIDEOFX_CREATE_VIDEO', 'IMAGE_TO_VIDEO', queryId, aspectRatio);
-    await submitBatchLog(token, 'PINHOLE_GENERATE_VIDEO', 'IMAGE_TO_VIDEO', queryId, aspectRatio);
-    await submitVideoTimerLog(token, timerId);
+    // Send 3 logs before generation (với aspectRatio + cookies)
+    await submitBatchLog(token, cookies, 'VIDEOFX_CREATE_VIDEO', 'IMAGE_TO_VIDEO', queryId, aspectRatio);
+    await submitBatchLog(token, cookies, 'PINHOLE_GENERATE_VIDEO', 'IMAGE_TO_VIDEO', queryId, aspectRatio);
+    await submitVideoTimerLog(token, cookies, timerId);
 
     const seedsArray = seeds || [Math.floor(Math.random() * 65536), Math.floor(Math.random() * 65536)];
 
@@ -3374,15 +3377,16 @@ app.post('/api/veo3/generate-start-image', async (req, res) => {
     log(`Generating start-image video: "${prompt.substring(0, 50)}..." (${requests.length} variants)`);
 
     const token = await getAccessToken();
+    const cookies = session.cookies; // Get cookies from session
 
     // Generate unique IDs for logs
     const queryId = `PINHOLE_MAIN_VIDEO_GENERATION_CACHE_ID${cryptoRandomId()}`;
     const timerId = `VIDEO_CREATION_TO_VIDEO_COMPLETION${cryptoRandomId()}`;
 
-    // Send batch logs before generation
-    await submitBatchLog(token, 'VIDEOFX_CREATE_VIDEO', 'IMAGE_TO_VIDEO', queryId, aspectRatio);
-    await submitBatchLog(token, 'PINHOLE_GENERATE_VIDEO', 'IMAGE_TO_VIDEO', queryId, aspectRatio);
-    await submitVideoTimerLog(token, timerId);
+    // Send batch logs before generation (with cookies)
+    await submitBatchLog(token, cookies, 'VIDEOFX_CREATE_VIDEO', 'IMAGE_TO_VIDEO', queryId, aspectRatio);
+    await submitBatchLog(token, cookies, 'PINHOLE_GENERATE_VIDEO', 'IMAGE_TO_VIDEO', queryId, aspectRatio);
+    await submitVideoTimerLog(token, cookies, timerId);
 
     // Ensure sessionId in clientContext
     const sessionId = generateSessionId();
@@ -3454,15 +3458,16 @@ app.post('/api/veo3/extend-video', async (req, res) => {
     log(`Extending video: "${prompt.substring(0, 50)}..."`);
 
     const token = await getAccessToken();
+    const cookies = session.cookies; // Get cookies from session
 
     // Generate unique IDs for logs
     const queryId = `PINHOLE_MAIN_VIDEO_GENERATION_CACHE_ID${cryptoRandomId()}`;
     const timerId = `VIDEO_CREATION_TO_VIDEO_COMPLETION${cryptoRandomId()}`;
 
-    // Send 3 logs before generation
-    await submitBatchLog(token, 'VIDEOFX_CREATE_VIDEO', 'EXTEND_VIDEO', queryId, aspectRatio);
-    await submitBatchLog(token, 'PINHOLE_GENERATE_VIDEO', 'EXTEND_VIDEO', queryId, aspectRatio);
-    await submitVideoTimerLog(token, timerId);
+    // Send 3 logs before generation (with cookies)
+    await submitBatchLog(token, cookies, 'VIDEOFX_CREATE_VIDEO', 'EXTEND_VIDEO', queryId, aspectRatio);
+    await submitBatchLog(token, cookies, 'PINHOLE_GENERATE_VIDEO', 'EXTEND_VIDEO', queryId, aspectRatio);
+    await submitVideoTimerLog(token, cookies, timerId);
 
     // Use body AS-IS from frontend (already in correct format)
     const response = await axios.post(
@@ -3516,15 +3521,16 @@ app.post('/api/veo3/generate-reference-video', async (req, res) => {
     log(`Generating reference video: "${prompt.substring(0, 50)}..."`);
 
     const token = await getAccessToken();
+    const cookies = session.cookies; // Get cookies from session
 
     // Generate unique IDs for logs
     const queryId = `PINHOLE_MAIN_VIDEO_GENERATION_CACHE_ID${cryptoRandomId()}`;
     const timerId = `VIDEO_CREATION_TO_VIDEO_COMPLETION${cryptoRandomId()}`;
 
-    // Send 3 logs before generation
-    await submitBatchLog(token, 'VIDEOFX_CREATE_VIDEO', 'REFERENCE_TO_VIDEO', queryId, aspectRatio);
-    await submitBatchLog(token, 'PINHOLE_GENERATE_VIDEO', 'REFERENCE_TO_VIDEO', queryId, aspectRatio);
-    await submitVideoTimerLog(token, timerId);
+    // Send 3 logs before generation (with cookies)
+    await submitBatchLog(token, cookies, 'VIDEOFX_CREATE_VIDEO', 'REFERENCE_TO_VIDEO', queryId, aspectRatio);
+    await submitBatchLog(token, cookies, 'PINHOLE_GENERATE_VIDEO', 'REFERENCE_TO_VIDEO', queryId, aspectRatio);
+    await submitVideoTimerLog(token, cookies, timerId);
 
     // Use body AS-IS from frontend (already in correct format)
     const response = await axios.post(
