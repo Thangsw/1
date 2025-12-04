@@ -2669,6 +2669,79 @@ async function submitVideoTimerLog(token, cookies, timerId) {
   }
 }
 
+// Helper: submit upload image logs (3-step process as per standard workflow)
+async function submitUploadImageLogs(token, sessionId, width, height) {
+  try {
+    // Step 1: PINHOLE_UPLOAD_IMAGE
+    await axios.post(
+      'https://labs.google/fx/api/trpc/general.submitBatchLog',
+      {
+        json: {
+          appEvents: [{
+            event: 'PINHOLE_UPLOAD_IMAGE',
+            eventMetadata: {
+              sessionId: sessionId
+            },
+            eventProperties: [
+              { key: 'TOOL_NAME', stringValue: 'PINHOLE' },
+              { key: 'G1_PAYGATE_TIER', stringValue: 'PAYGATE_TIER_TWO' },
+              { key: 'PINHOLE_PROMPT_BOX_MODE', stringValue: 'IMAGE_TO_VIDEO' },
+              { key: 'USER_AGENT', stringValue: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36' },
+              { key: 'IS_DESKTOP' }
+            ],
+            activeExperiments: [],
+            eventTime: new Date().toISOString()
+          }]
+        }
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Referer': 'https://labs.google/'
+        }
+      }
+    );
+
+    // Step 2: PINHOLE_UPLOAD_IMAGE_TO_CROP (with width/height)
+    await axios.post(
+      'https://labs.google/fx/api/trpc/general.submitBatchLog',
+      {
+        json: {
+          appEvents: [{
+            event: 'PINHOLE_UPLOAD_IMAGE_TO_CROP',
+            eventMetadata: {
+              sessionId: sessionId
+            },
+            eventProperties: [
+              { key: 'TOOL_NAME', stringValue: 'PINHOLE' },
+              { key: 'PINHOLE_UPLOAD_IMAGE_TO_CROP_WIDTH', doubleValue: width },
+              { key: 'PINHOLE_UPLOAD_IMAGE_TO_CROP_HEIGHT', doubleValue: height },
+              { key: 'G1_PAYGATE_TIER', stringValue: 'PAYGATE_TIER_TWO' },
+              { key: 'PINHOLE_PROMPT_BOX_MODE', stringValue: 'IMAGE_TO_VIDEO' },
+              { key: 'USER_AGENT', stringValue: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36' },
+              { key: 'IS_DESKTOP' }
+            ],
+            activeExperiments: [],
+            eventTime: new Date().toISOString()
+          }]
+        }
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Referer': 'https://labs.google/'
+        }
+      }
+    );
+
+    log(`✅ Upload logs sent (width: ${width}, height: ${height})`);
+  } catch (err) {
+    log(`⚠️ submitUploadImageLogs warning: ${err.message}`, 'warn');
+  }
+}
+
 // Veo3 state - manual projectId và sceneId (ngon.js approach)
 let veo3Session = {
   projectId: null,
@@ -3133,7 +3206,7 @@ app.post('/api/veo3/upload-cropped-image', async (req, res) => {
     const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
     const laneName = tokenObj.name || 'default';
 
-    log(`📤 [Lane: ${laneName}] Uploading cropped image to Veo3 (step 2/2)...`);
+    log(`📤 [Lane: ${laneName}] Uploading image to Veo3 (3-step process)...`);
 
     // CRITICAL: Use authorization from tokenObj (lane data) if available
     let token;
@@ -3162,9 +3235,26 @@ app.post('/api/veo3/upload-cropped-image', async (req, res) => {
       imageAspectRatio = aspectRatio.replace('VIDEO_', 'IMAGE_');
     }
 
-    log(`Aspect ratio: ${aspectRatio} -> ${imageAspectRatio}`);
+    // Determine width/height based on aspect ratio
+    let width, height;
+    if (imageAspectRatio === 'IMAGE_ASPECT_RATIO_LANDSCAPE') {
+      width = 1364;
+      height = 768;
+    } else if (imageAspectRatio === 'IMAGE_ASPECT_RATIO_PORTRAIT') {
+      width = 749;
+      height = 422;
+    } else {
+      // Default to landscape
+      width = 1364;
+      height = 768;
+    }
 
-    // Upload cropped image qua CÙNG endpoint v1:uploadUserImage
+    log(`📐 [Lane: ${laneName}] Aspect ratio: ${imageAspectRatio} (${width}x${height})`);
+
+    // STEP 1 & 2: Submit batch logs (PINHOLE_UPLOAD_IMAGE + PINHOLE_UPLOAD_IMAGE_TO_CROP)
+    await submitUploadImageLogs(token, sessionId, width, height);
+
+    // STEP 3: Upload cropped image via v1:uploadUserImage
     const proxyString = tokenObj.proxy; // CRITICAL: Use proxy from tokenObj
 
     const uploadResponse = await axiosWithRetry({
@@ -3184,8 +3274,9 @@ app.post('/api/veo3/upload-cropped-image', async (req, res) => {
       },
       headers: {
         'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Referer': 'https://labs.google/fx/tools/flow'
+        'Content-Type': 'text/plain;charset=UTF-8',
+        'Origin': 'https://labs.google',
+        'Referer': 'https://labs.google/'
       }
     }, 0, 5, laneName, proxyString);
 
@@ -3193,11 +3284,11 @@ app.post('/api/veo3/upload-cropped-image', async (req, res) => {
     const mediaGenerationId = uploadResponse.data?.mediaGenerationId?.mediaGenerationId;
     const mediaId = mediaGenerationId; // This is the mediaId to use for video generation
 
-    log(`✅ [Lane: ${laneName}] Cropped image uploaded (step 2/2) - mediaId: ${mediaId?.substring(0, 30)}...`);
+    log(`✅ [Lane: ${laneName}] Image uploaded successfully - mediaId: ${mediaId?.substring(0, 30)}...`);
 
     res.json({ success: true, mediaId });
   } catch (err) {
-    log(`✗ Upload cropped image failed: ${err.message}`, 'error');
+    log(`✗ Upload image failed: ${err.message}`, 'error');
     if (err.response?.data) {
       log(`Error response: ${JSON.stringify(err.response.data)}`);
     }
