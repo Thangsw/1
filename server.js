@@ -1987,15 +1987,22 @@ app.post('/api/generate', async (req, res) => {
     return res.json({ success: false, error: 'Prompt is required' });
   }
 
-  // CRITICAL: Use specific lane token if laneName provided, otherwise round-robin
+  // CRITICAL: Use specific lane token if laneName provided
   let token;
   if (laneName) {
-    token = getTokenByName(laneName);
-    if (!token) {
-      return res.json({ success: false, error: `Lane "${laneName}" not found` });
+    // Read token directly from Excel instead of relying on tokenPool
+    try {
+      const allTokens = await readTokensFromFile();
+      token = allTokens.find(t => t.name === laneName);
+      if (!token) {
+        return res.json({ success: false, error: `Lane "${laneName}" not found in tokens.xlsx` });
+      }
+      log(`🎨 Generating image with lane: ${laneName} (from Excel)`);
+    } catch (err) {
+      return res.json({ success: false, error: `Failed to read lane: ${err.message}` });
     }
-    log(`🎨 Generating image with lane: ${laneName}`);
   } else {
+    // Use round-robin from pool
     token = getNextToken();
     log(`🎨 Generating image with token: ${token.name || 'default'}`);
   }
@@ -3097,8 +3104,18 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
   try {
     const { projectId: reqProjectId, sceneId: reqSceneId, startImageMediaId, endImageMediaId, prompt, aspectRatio, seeds, tokenName } = req.body;
 
-    // Get token from pool by name (for multi-lane support)
-    const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
+    // Get token: if tokenName provided, read from Excel; otherwise use pool
+    let tokenObj;
+    if (tokenName) {
+      // Read token directly from Excel instead of relying on tokenPool
+      const allTokens = await readTokensFromFile();
+      tokenObj = allTokens.find(t => t.name === tokenName);
+      if (!tokenObj) {
+        return res.json({ success: false, error: `Lane "${tokenName}" not found in tokens.xlsx` });
+      }
+    } else {
+      tokenObj = getNextToken();
+    }
     const laneName = tokenObj.name || 'default';
 
     // CRITICAL: Use projectId/sceneId from tokenObj (lane data) if not provided in request
