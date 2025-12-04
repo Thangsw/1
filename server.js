@@ -2880,7 +2880,7 @@ app.post('/api/veo3/generate', async (req, res) => {
     log(`Generating Veo3 video: "${prompt.substring(0, 50)}..."`);
 
     const payload = {
-      modelKey: modelKey || 'veo_3_1_i2v_s_fast_ultra_fl',
+      modelKey: modelKey || 'veo_3_1_i2v_s_fast_fl_ultra_relaxed',
       prompt,
       startImageKey,
       aspectRatio: aspectRatio || 'VIDEO_ASPECT_RATIO_LANDSCAPE',
@@ -3285,7 +3285,7 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
           aspectRatio,
           seed,
           textInput: { prompt },
-          videoModelKey: 'veo_3_1_i2v_s_fast_ultra_fl',
+          videoModelKey: 'veo_3_1_i2v_s_fast_fl_ultra_relaxed',
           startImage: { mediaId: startImageMediaId },
           endImage: { mediaId: endImageMediaId },
           metadata: { sceneId: uniqueSceneId }
