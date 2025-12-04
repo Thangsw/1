@@ -1669,12 +1669,37 @@ app.post('/api/lanes/save', async (req, res) => {
       }
     }
 
+    // CRITICAL: Auto-fetch authorization if missing but have credentials
+    let autoAuthorization = lane.authorization || '';
+    if (!autoAuthorization && lane.sessionToken && lane.cookies) {
+      try {
+        log(`🔄 Auto-fetching authorization for lane: ${lane.name}`);
+
+        // Create temporary token object
+        const tempToken = {
+          name: lane.name,
+          sessionToken: lane.sessionToken,
+          cookies: lane.cookies
+        };
+
+        // Get fresh access token
+        const accessToken = await getAccessToken(false, tempToken);
+        if (accessToken) {
+          autoAuthorization = `Bearer ${accessToken}`;
+          log(`✅ Auto-fetched authorization: ${accessToken.substring(0, 30)}...`);
+        }
+      } catch (err) {
+        log(`⚠️ Could not auto-fetch authorization: ${err.message}`);
+        // Continue without authorization - can be added manually later
+      }
+    }
+
     // Update or add lane
     const laneData = {
       name: lane.name,
       sessionToken: lane.sessionToken || '',
       cookies: lane.cookies || '',
-      authorization: lane.authorization || '',
+      authorization: autoAuthorization,
       projectId: lane.projectId || '',
       sceneId: lane.sceneId || '',
       savedAt: new Date().toISOString()
@@ -1823,9 +1848,24 @@ app.get('/api/capture-token', async (req, res) => {
       }
     }
 
+    // CRITICAL: Get fresh authorization token from Chrome
+    let authorization = null;
+    try {
+      log('🔑 Getting authorization token from Chrome...');
+      const accessToken = await getAccessToken(false);
+      if (accessToken) {
+        authorization = `Bearer ${accessToken}`;
+        log(`✅ Authorization token extracted: ${accessToken.substring(0, 30)}...`);
+      }
+    } catch (err) {
+      log(`⚠️ Could not get authorization token: ${err.message}`);
+      // Continue without authorization - user can paste manually
+    }
+
     const capturedToken = {
       sessionToken: session.sessionToken,
       cookies: session.cookies,
+      authorization: authorization,
       capturedAt: new Date().toISOString()
     };
 
