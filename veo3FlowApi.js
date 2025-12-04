@@ -570,4 +570,6 @@ class Veo3FlowApi {
 // Export for both Node.js and browser environments
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { Veo3FlowApi };
+} else if (typeof window !== 'undefined') {
+  window.Veo3FlowApi = Veo3FlowApi;
 }

@@ -335,8 +335,8 @@
   <script src="veo3FlowApi.js"></script>
 
   <script>
-    // Access Veo3FlowApi from window
-    const { Veo3FlowApi } = window;
+    // veo3FlowApi.js exports Veo3FlowApi to window, use it directly
+    // Don't destructure to avoid "already declared" error
 
     let laneListCache = [];
     let activeLanes = [];  // Lanes đang running
@@ -771,7 +771,7 @@
       }
 
       // Create Flow API instance
-      const flowApi = new Veo3FlowApi({
+      const flowApi = new window.Veo3FlowApi({
         projectId: laneData.projectId,
         sceneId: laneData.sceneId,
         authorization: laneData.authorization,
