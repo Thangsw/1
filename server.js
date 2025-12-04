@@ -3203,22 +3203,36 @@ app.post('/api/veo3/upload-cropped-image', async (req, res) => {
     const { imageBase64, aspectRatio, tokenName } = req.body;
 
     // Get token from pool by name (for multi-lane support)
-    const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
+    let tokenObj;
+    if (tokenName) {
+      // CRITICAL: When tokenName is specified, read directly from Excel
+      const allTokens = await readTokensFromFile();
+      tokenObj = allTokens.find(t => t.name === tokenName);
+      if (!tokenObj) {
+        return res.json({
+          success: false,
+          error: `Lane "${tokenName}" not found in tokens.xlsx. Please check the lane name or load token pool first.`
+        });
+      }
+    } else {
+      tokenObj = getNextToken();
+    }
+
     const laneName = tokenObj.name || 'default';
+
+    // Validate token has authorization
+    if (!tokenObj.authorization) {
+      return res.json({
+        success: false,
+        error: `Lane "${laneName}" is missing authorization token. Please load tokens from Excel first using "Load Token Pool" button.`
+      });
+    }
 
     log(`📤 [Lane: ${laneName}] Uploading image to Veo3 (3-step process)...`);
 
-    // CRITICAL: Use authorization from tokenObj (lane data) if available
-    let token;
-    if (tokenObj.authorization) {
-      // Use saved authorization token from lane
-      token = tokenObj.authorization.replace(/^Bearer\s+/i, '').trim();
-      log(`🔑 [Lane: ${laneName}] Using authorization from lane data`);
-    } else {
-      // Fallback: Get fresh access token
-      token = await getAccessToken(false, tokenObj);
-      log(`🔑 [Lane: ${laneName}] Using fresh access token from getAccessToken()`);
-    }
+    // Use saved authorization token from lane
+    const token = tokenObj.authorization.replace(/^Bearer\s+/i, '').trim();
+    log(`🔑 [Lane: ${laneName}] Using authorization from lane data`);
 
     // Generate sessionId
     const sessionId = generateSessionId();
