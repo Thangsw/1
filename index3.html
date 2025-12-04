@@ -2803,13 +2803,18 @@ Camera moves forward into the scene
           // CRITICAL: Get selected lane name to use specific token
           const selectedLaneName = document.getElementById('selectedLane').value;
 
+          // DEBUG: Log state before sending request
+          log(`🐛 [DEBUG] State before generate-start-end:`, 'info');
+          log(`   state.projectId: ${state.projectId || 'UNDEFINED'}`, 'info');
+          log(`   state.sceneId: ${state.sceneId || 'UNDEFINED'}`, 'info');
+
           const videoRes = await fetch('/api/veo3/generate-start-end', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               tokenName: selectedLaneName || undefined,
-              projectId: state.projectId,
-              sceneId: state.sceneId,
+              projectId: state.projectId || undefined,
+              sceneId: state.sceneId || undefined,
               startImageMediaId: mediaId1,
               endImageMediaId: mediaId2,
               prompt: cleanPrompt,

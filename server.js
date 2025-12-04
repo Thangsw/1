@@ -3339,6 +3339,11 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
     }
     const laneName = tokenObj.name || 'default';
 
+    // DEBUG: Log raw request body
+    log(`📥 [DEBUG] Raw request body keys: ${Object.keys(req.body).join(', ')}`);
+    log(`   reqProjectId: ${reqProjectId || 'UNDEFINED'}`);
+    log(`   reqSceneId: ${reqSceneId || 'UNDEFINED'}`);
+
     // CRITICAL: Use projectId/sceneId from tokenObj (lane data) if not provided in request
     const projectId = reqProjectId || tokenObj.projectId;
     const sceneId = reqSceneId || tokenObj.sceneId;
