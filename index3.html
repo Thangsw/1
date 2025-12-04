@@ -2780,16 +2780,19 @@ Camera moves forward into the scene
             cleanPrompt = cleanPrompt + '. ' + commonVideoPrompt;
           }
 
-          // BREAKTHROUGH: Use Whisk's generationId directly as mediaID!
-          // No need to upload - Whisk's mediaID works directly with Veo3
-          const mediaId1 = img1.generationId;
-          const mediaId2 = img2.generationId;
+          // CRITICAL: Upload images to Veo3 to get valid mediaId
+          // Whisk's generationId (workflow_xxx format) is NOT compatible with Veo3 API
+          // Must upload to get UUID-format mediaId
+          log(`📤 [Video ${sceneIndex + 1}] Uploading images to Veo3...`, 'info');
+
+          const mediaId1 = await uploadImageToVeo3(img1);
+          const mediaId2 = await uploadImageToVeo3(img2);
 
           if (!mediaId1 || !mediaId2) {
-            throw new Error(`Ảnh thiếu generationId (img1: ${!!mediaId1}, img2: ${!!mediaId2})`);
+            throw new Error(`Failed to upload images (img1: ${!!mediaId1}, img2: ${!!mediaId2})`);
           }
 
-          log(`🚀 [Video ${sceneIndex + 1}] Dùng trực tiếp mediaID từ Whisk (bỏ qua upload)`, 'info');
+          log(`✅ [Video ${sceneIndex + 1}] Images uploaded successfully`, 'success');
 
           // Generate multiple variants (gen all, but only preview variant A)
           const numVariants = 2;
