@@ -3221,30 +3221,23 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
     const proxyString = tokenObj.proxy; // CRITICAL: Use proxy from tokenObj for multi-lane
     const cookies = tokenObj.cookies || session.cookies; // CRITICAL: Get cookies from tokenObj
 
-    // Generate unique IDs for logs
+    // Generate unique IDs
     const sessionId = generateSessionId();
-    const queryId = `PINHOLE_MAIN_VIDEO_GENERATION_CACHE_ID${cryptoRandomId()}`;
-    const timerId = `VIDEO_CREATION_TO_VIDEO_COMPLETION${cryptoRandomId()}`;
 
-    // Send 3 logs before generation (với aspectRatio + cookies)
-    await submitBatchLog(token, cookies, 'VIDEOFX_CREATE_VIDEO', 'IMAGE_TO_VIDEO', queryId, aspectRatio);
-    await submitBatchLog(token, cookies, 'PINHOLE_GENERATE_VIDEO', 'IMAGE_TO_VIDEO', queryId, aspectRatio);
-    await submitVideoTimerLog(token, cookies, timerId);
-
-    const seedsArray = seeds || [Math.floor(Math.random() * 65536), Math.floor(Math.random() * 65536)];
+    const seedsArray = seeds || [Math.floor(Math.random() * 65536)];
 
     const requestPayload = {
       clientContext: {
         sessionId: sessionId,
         projectId,
         tool: 'PINHOLE',
-        userPaygateTier: 'PAYGATE_TIER_ONE'  // FIXED: Use TIER_ONE to match Google Flow UI
+        userPaygateTier: 'PAYGATE_TIER_ONE'
       },
       requests: seedsArray.map(seed => ({
         aspectRatio,
         seed,
         textInput: { prompt },
-        videoModelKey: 'veo_3_1_i2v_s_fast_ultra_fl',  // Google updated: need 'ultra' variant
+        videoModelKey: 'veo_3_1_i2v_s_fast_ultra_fl',
         startImage: { mediaId: startImageMediaId },
         endImage: { mediaId: endImageMediaId },
         metadata: { sceneId }
