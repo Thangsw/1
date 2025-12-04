@@ -3074,12 +3074,16 @@ Camera moves forward into the scene
         const blob = await res.blob();
         const base64 = await blobToBase64(blob);
 
+        // CRITICAL: Pass tokenName to use correct lane for upload
+        const selectedLaneName = document.getElementById('selectedLane').value;
+
         const uploadRes = await fetch('/api/veo3/upload-cropped-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             imageBase64: base64,
-            aspectRatio: state.aspectRatio.replace('IMAGE_', 'VIDEO_')
+            aspectRatio: state.aspectRatio.replace('IMAGE_', 'VIDEO_'),
+            tokenName: selectedLaneName || undefined
           })
         });
 
