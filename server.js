@@ -601,21 +601,18 @@ const generateImage = async (prompt, options = {}, token = null) => {
       accessToken = session.accessToken;
     }
 
-    // BƯỚC QUAN TRỌNG: Tạo workflow qua API trước!
-    if (!session.workflowId || !session.sessionId) {
-      await createOrUpdateWorkflow();
-      log(`✓ Using workflow: ${session.workflowId}`);
-      log(`✓ Using session: ${session.sessionId}`);
-    }
+    // CRITICAL: Create workflowId and sessionId per request (no Chrome needed!)
+    const workflowId = `workflow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const sessionId = `;${Date.now()}`;
 
     const seed = options.seed || Math.floor(Math.random() * 1000000);
     const aspectRatio = options.aspectRatio || 'IMAGE_ASPECT_RATIO_LANDSCAPE';
 
     const payload = {
       clientContext: {
-        workflowId: session.workflowId,
+        workflowId: workflowId,
         tool: 'BACKBONE',
-        sessionId: session.sessionId
+        sessionId: sessionId
       },
       imageModelSettings: {
         imageModel: 'IMAGEN_3_5',
@@ -629,7 +626,7 @@ const generateImage = async (prompt, options = {}, token = null) => {
     // Add originalMediaGenerationId if provided (for Continue feature)
     if (options.originalMediaGenerationId) {
       payload.originalMediaGenerationId = options.originalMediaGenerationId;
-      log(`✓ Using originalMediaGenerationId: ${options.originalMediaGenerationId.substring(0, 20)}...`);
+      log(`✓ Using originalMediaGenerationId for (continue): ${options.originalMediaGenerationId.substring(0, 20)}...`);
     }
 
     log('Sending request to Whisk API...');
