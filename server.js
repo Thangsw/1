@@ -3240,15 +3240,21 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
         tool: 'PINHOLE',
         userPaygateTier: 'PAYGATE_TIER_TWO'
       },
-      requests: seedsArray.map(seed => ({
-        aspectRatio,
-        seed,
-        textInput: { prompt },
-        videoModelKey: 'veo_3_1_i2v_s_fast_ultra_fl',
-        startImage: { mediaId: startImageMediaId },
-        endImage: { mediaId: endImageMediaId },
-        metadata: { sceneId }
-      }))
+      requests: seedsArray.map(seed => {
+        // CRITICAL: Each request MUST have unique sceneId!
+        // Generate new UUID for each variant
+        const uniqueSceneId = crypto.randomUUID();
+
+        return {
+          aspectRatio,
+          seed,
+          textInput: { prompt },
+          videoModelKey: 'veo_3_1_i2v_s_fast_ultra_fl',
+          startImage: { mediaId: startImageMediaId },
+          endImage: { mediaId: endImageMediaId },
+          metadata: { sceneId: uniqueSceneId }
+        };
+      })
     };
 
     // DEBUG: Log payload being sent to Google API
