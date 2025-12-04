@@ -3238,7 +3238,7 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
         sessionId: sessionId,
         projectId,
         tool: 'PINHOLE',
-        userPaygateTier: 'PAYGATE_TIER_ONE'
+        userPaygateTier: 'PAYGATE_TIER_TWO'
       },
       requests: seedsArray.map(seed => ({
         aspectRatio,
