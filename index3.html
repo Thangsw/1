@@ -1642,6 +1642,10 @@ Camera moves forward into the scene
         const data = await res.json();
         if (data.success) {
           const selector = document.getElementById('profileSelector');
+          if (!selector) {
+            log('⚠️ Element "profileSelector" không tồn tại trong DOM', 'warning');
+            return;
+          }
           selector.innerHTML = '<option value="">-- Chọn profile --</option>';
           data.profiles.forEach(profile => {
             const option = document.createElement('option');
@@ -2021,6 +2025,10 @@ Camera moves forward into the scene
 
         // Populate dropdown (danh sách profile/token)
         const selector = document.getElementById('tokenSelector');
+        if (!selector) {
+          log('⚠️ Element "tokenSelector" không tồn tại trong DOM', 'warning');
+          return;
+        }
         selector.innerHTML = '<option value="">-- Chọn profile/token --</option>';
 
         if (data.success && data.tokens && data.tokens.length > 0) {

@@ -98,6 +98,35 @@ function getTokenByName(tokenName) {
   return token;
 }
 
+// CRITICAL: Request deduplication - prevent duplicate API calls
+// Track recent requests by hash and reject duplicates within 3 seconds
+const recentRequests = new Map();
+const REQUEST_DEDUP_WINDOW_MS = 3000; // 3 seconds
+
+function getRequestHash(data) {
+  return crypto.createHash('md5').update(JSON.stringify(data)).digest('hex');
+}
+
+function isDuplicateRequest(requestHash) {
+  const now = Date.now();
+
+  // Clean up old entries
+  for (const [hash, timestamp] of recentRequests.entries()) {
+    if (now - timestamp > REQUEST_DEDUP_WINDOW_MS) {
+      recentRequests.delete(hash);
+    }
+  }
+
+  // Check if this is a duplicate
+  if (recentRequests.has(requestHash)) {
+    return true;
+  }
+
+  // Mark this request as seen
+  recentRequests.set(requestHash, now);
+  return false;
+}
+
 // Helper: Read tokens from tokens.xlsx (or fallback to tokens.txt)
 async function readTokensFromFile() {
   try {
@@ -3181,6 +3210,13 @@ app.post('/api/veo3/upload-cropped-image', async (req, res) => {
 app.post('/api/veo3/generate-start-end', async (req, res) => {
   try {
     const { projectId: reqProjectId, sceneId: reqSceneId, startImageMediaId, endImageMediaId, prompt, aspectRatio, seeds, tokenName } = req.body;
+
+    // CRITICAL: Check for duplicate requests to prevent double API calls
+    const requestHash = getRequestHash({ projectId: reqProjectId, sceneId: reqSceneId, startImageMediaId, endImageMediaId, prompt, aspectRatio, seeds, tokenName });
+    if (isDuplicateRequest(requestHash)) {
+      log(`⚠️ [DUPLICATE] Rejected duplicate generate-start-end request (hash: ${requestHash.substring(0, 8)}...)`, 'warning');
+      return res.json({ success: false, error: 'Duplicate request detected. Please wait before retrying.' });
+    }
 
     // Get token: if tokenName provided, read from Excel; otherwise use pool
     let tokenObj;
