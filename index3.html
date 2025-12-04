@@ -864,6 +864,9 @@ Camera moves forward into the scene
     </div>
   </div>
 
+  <!-- Import Veo3 Flow API Module -->
+  <script src="veo3FlowApi.js"></script>
+
   <script>
     // ============================================
     // GLOBAL STATE
@@ -879,6 +882,9 @@ Camera moves forward into the scene
       imageCount: 0,
       videoCount: 0,
       lastVideoMediaId: null,  // For continue/extend
+
+      // Flow API module instance
+      flowApi: null,        // NEW: Veo3FlowApi instance for new workflow
 
       // Queue system
       imageQueue: [],       // Prompts to generate
@@ -2156,6 +2162,54 @@ Camera moves forward into the scene
       }
     }
 
+    /**
+     * Initialize Flow API module with current lane config
+     * This creates a Veo3FlowApi instance with credentials from selected lane
+     */
+    async function initializeFlowApi() {
+      try {
+        const selectedLaneName = document.getElementById('selectedLane').value;
+
+        if (!selectedLaneName) {
+          log('⚠️ Chưa chọn lane, Flow API sẽ dùng session hiện tại', 'warning');
+          return;
+        }
+
+        // Fetch lane credentials from Excel
+        const res = await fetch('/api/get-lane-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ laneName: selectedLaneName })
+        });
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+
+        const laneData = await res.json();
+
+        if (!laneData.success) {
+          throw new Error(laneData.error || 'Failed to get lane config');
+        }
+
+        // Initialize Veo3FlowApi instance
+        state.flowApi = new Veo3FlowApi({
+          projectId: state.projectId,
+          sceneId: state.sceneId,
+          authorization: laneData.authorization,
+          cookies: laneData.cookies,
+          proxy: laneData.proxy,
+          serverUrl: window.location.origin
+        });
+
+        log(`✅ Flow API module đã khởi tạo với lane: ${selectedLaneName}`, 'success');
+      } catch (err) {
+        log(`⚠️ Lỗi khởi tạo Flow API: ${err.message}`, 'warning');
+        log(`   Sẽ tiếp tục dùng workflow cũ`, 'info');
+        state.flowApi = null;
+      }
+    }
+
     async function loadSession() {
       const projectId = document.getElementById('projectId').value.trim();
       const sceneId = document.getElementById('sceneId').value.trim();
@@ -2181,6 +2235,9 @@ Camera moves forward into the scene
         if (data.success) {
           log(`✅ Project đã xác nhận: ${projectId.substring(0, 8)}..., Scene: ${sceneId.substring(0, 8)}...`, 'success');
           updateStatus('sessionStatus', 'active');
+
+          // Initialize Flow API module with current lane
+          await initializeFlowApi();
         } else {
           log('❌ Lỗi xác nhận project: ' + data.error, 'error');
         }

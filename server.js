@@ -1430,6 +1430,48 @@ app.get('/api/list-tokens', async (req, res) => {
   }
 });
 
+// Get full lane config (for Flow API module)
+app.post('/api/get-lane-config', async (req, res) => {
+  try {
+    const { laneName } = req.body;
+
+    if (!laneName) {
+      return res.status(400).json({
+        success: false,
+        error: 'Lane name is required'
+      });
+    }
+
+    // Read tokens from xlsx or txt
+    const tokens = await readTokensFromFile();
+    const lane = tokens.find(t => t.name === laneName);
+
+    if (!lane) {
+      return res.status(404).json({
+        success: false,
+        error: `Lane "${laneName}" not found`
+      });
+    }
+
+    // Return full credentials (authorization, cookies, proxy, etc.)
+    res.json({
+      success: true,
+      name: lane.name,
+      authorization: lane.authorization,
+      cookies: lane.cookies,
+      proxy: lane.proxy,
+      projectId: lane.projectId,
+      sceneId: lane.sceneId
+    });
+  } catch (error) {
+    log(`✗ Error getting lane config: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Export tokens.txt -> CSV để mở bằng Excel
 app.get('/api/tokens/export-csv', async (req, res) => {
   try {
@@ -3449,6 +3491,73 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
         log(`Generate-start-end error body (raw): ${String(err.response.data)}`, 'error');
       }
     }
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Poll video operation status
+app.post('/api/veo3/poll-operation', async (req, res) => {
+  try {
+    const { operationName, tokenName } = req.body;
+
+    if (!operationName) {
+      return res.json({ success: false, error: 'Missing operationName' });
+    }
+
+    // Get token from pool by name (for multi-lane support)
+    const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
+    const laneName = tokenObj.name || 'default';
+
+    const token = await getAccessToken(false, tokenObj);
+
+    // Poll operation
+    const response = await axiosWithRetry({
+      method: 'GET',
+      url: `https://aisandbox-pa.googleapis.com/v1/${operationName}`,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Referer': 'https://labs.google/',
+        'x-client-data': 'CIyIywE='
+      }
+    }, 0, 3, laneName, tokenObj.proxy);
+
+    const data = response.data;
+
+    // Check if done
+    if (data.done) {
+      if (data.response && data.response.videos && data.response.videos.length > 0) {
+        const video = data.response.videos[0];
+        res.json({
+          success: true,
+          done: true,
+          video: {
+            url: video.uri || video.url,
+            mediaId: video.name || video.mediaId
+          }
+        });
+      } else if (data.error) {
+        res.json({
+          success: true,
+          done: true,
+          error: data.error.message || 'Video generation failed'
+        });
+      } else {
+        res.json({
+          success: true,
+          done: true,
+          error: 'No video in response'
+        });
+      }
+    } else {
+      // Not done yet
+      res.json({
+        success: true,
+        done: false
+      });
+    }
+  } catch (err) {
+    log(`✗ Poll operation failed: ${err.message}`, 'error');
     res.json({ success: false, error: err.message });
   }
 });
