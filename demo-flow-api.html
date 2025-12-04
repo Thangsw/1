@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demo Veo3 Flow API</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 2.5em;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 1.1em;
+    }
+
+    .section {
+      margin-bottom: 30px;
+      padding: 20px;
+      background: #f8f9fa;
+      border-radius: 10px;
+      border-left: 4px solid #667eea;
+    }
+
+    .section h2 {
+      color: #667eea;
+      margin-bottom: 15px;
+      font-size: 1.5em;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 5px;
+      color: #555;
+      font-weight: 600;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+      font-family: inherit;
+    }
+
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 12px 30px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .status {
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 15px;
+      font-weight: 600;
+    }
+
+    .status.info {
+      background: #e3f2fd;
+      color: #1976d2;
+      border-left: 4px solid #1976d2;
+    }
+
+    .status.success {
+      background: #e8f5e9;
+      color: #388e3c;
+      border-left: 4px solid #388e3c;
+    }
+
+    .status.error {
+      background: #ffebee;
+      color: #c62828;
+      border-left: 4px solid #c62828;
+    }
+
+    .status.warning {
+      background: #fff3e0;
+      color: #f57c00;
+      border-left: 4px solid #f57c00;
+    }
+
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 15px;
+      margin-top: 15px;
+    }
+
+    .gallery img {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      transition: transform 0.2s;
+    }
+
+    .gallery img:hover {
+      transform: scale(1.05);
+    }
+
+    .code-block {
+      background: #2d2d2d;
+      color: #f8f8f2;
+      padding: 15px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      margin-top: 10px;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .result-item {
+      background: white;
+      padding: 10px;
+      border-radius: 8px;
+      margin-top: 10px;
+      border: 1px solid #ddd;
+    }
+
+    .result-item strong {
+      color: #667eea;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎬 Demo Veo3 Flow API</h1>
+    <p class="subtitle">Test module veo3FlowApi.js với các workflow khác nhau</p>
+
+    <!-- Config Section -->
+    <div class="section">
+      <h2>⚙️ Configuration</h2>
+      <div class="form-group">
+        <label>Project ID:</label>
+        <input type="text" id="projectId" placeholder="1234567890" />
+      </div>
+      <div class="form-group">
+        <label>Scene ID:</label>
+        <input type="text" id="sceneId" placeholder="abcd-efgh-ijkl" />
+      </div>
+      <div class="form-group">
+        <label>Authorization:</label>
+        <input type="text" id="authorization" placeholder="Bearer ya29.a0..." />
+      </div>
+      <div class="form-group">
+        <label>Cookies (optional):</label>
+        <textarea id="cookies" placeholder="__Secure-1PSID=...; __Secure-3PSID=..."></textarea>
+      </div>
+      <button onclick="initApi()">🔧 Initialize API</button>
+      <div id="initStatus"></div>
+    </div>
+
+    <!-- Test 1: Generate Images -->
+    <div class="section">
+      <h2>🖼️ Test 1: Generate Images</h2>
+      <div class="form-group">
+        <label>Image Prompt:</label>
+        <textarea id="imagePrompt1">A serene mountain landscape at sunset with golden clouds</textarea>
+      </div>
+      <div class="form-group">
+        <label>Aspect Ratio:</label>
+        <select id="aspectRatio1">
+          <option value="IMAGE_16_9">16:9</option>
+          <option value="IMAGE_9_16">9:16</option>
+          <option value="IMAGE_4_3">4:3</option>
+          <option value="IMAGE_1_1">1:1</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Number of Images:</label>
+        <select id="numImages1">
+          <option value="4">4</option>
+          <option value="3">3</option>
+          <option value="2">2</option>
+          <option value="1">1</option>
+        </select>
+      </div>
+      <button onclick="testGenerateImages()">📸 Generate Images</button>
+      <div id="status1"></div>
+      <div id="gallery1" class="gallery"></div>
+    </div>
+
+    <!-- Test 2: Generate Video -->
+    <div class="section">
+      <h2>🎬 Test 2: Generate Video from MediaIds</h2>
+      <div class="form-group">
+        <label>Media ID 1 (Start Image):</label>
+        <input type="text" id="mediaId1" placeholder="uuid-xxxx-xxxx" />
+      </div>
+      <div class="form-group">
+        <label>Media ID 2 (End Image):</label>
+        <input type="text" id="mediaId2" placeholder="uuid-yyyy-yyyy" />
+      </div>
+      <div class="form-group">
+        <label>Video Prompt:</label>
+        <textarea id="videoPrompt2">Camera slowly pans from left to right</textarea>
+      </div>
+      <div class="form-group">
+        <label>Video Aspect Ratio:</label>
+        <select id="aspectRatio2">
+          <option value="VIDEO_16_9">16:9</option>
+          <option value="VIDEO_9_16">9:16</option>
+        </select>
+      </div>
+      <button onclick="testGenerateVideo()">🎥 Generate Video</button>
+      <div id="status2"></div>
+    </div>
+
+    <!-- Test 3: Complete Workflow -->
+    <div class="section">
+      <h2>⚡ Test 3: Complete Workflow (Image + Video)</h2>
+      <div class="form-group">
+        <label>Image Prompt:</label>
+        <textarea id="imagePrompt3">A futuristic city skyline at night with neon lights</textarea>
+      </div>
+      <div class="form-group">
+        <label>Video Prompt:</label>
+        <textarea id="videoPrompt3">Camera flying through the city streets at high speed</textarea>
+      </div>
+      <button onclick="testCompleteWorkflow()">🚀 Run Complete Workflow</button>
+      <div id="status3"></div>
+      <div id="gallery3" class="gallery"></div>
+      <div id="results3"></div>
+    </div>
+
+    <!-- Console Log -->
+    <div class="section">
+      <h2>📋 Console Log</h2>
+      <div id="consoleLog" class="code-block">Waiting for actions...</div>
+    </div>
+  </div>
+
+  <!-- Import Module -->
+  <script src="veo3FlowApi.js"></script>
+
+  <script>
+    let api = null;
+    const logs = [];
+
+    function log(message, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      logs.push(`[${timestamp}] ${message}`);
+      document.getElementById('consoleLog').textContent = logs.slice(-20).join('\n');
+      console.log(message);
+    }
+
+    function showStatus(elementId, message, type = 'info') {
+      const el = document.getElementById(elementId);
+      el.innerHTML = `<div class="status ${type}">${message}</div>`;
+    }
+
+    function initApi() {
+      try {
+        const config = {
+          projectId: document.getElementById('projectId').value,
+          sceneId: document.getElementById('sceneId').value,
+          authorization: document.getElementById('authorization').value,
+          cookies: document.getElementById('cookies').value,
+          serverUrl: window.location.origin
+        };
+
+        if (!config.projectId || !config.sceneId || !config.authorization) {
+          showStatus('initStatus', '⚠️ Vui lòng điền đầy đủ Project ID, Scene ID và Authorization', 'warning');
+          return;
+        }
+
+        api = new Veo3FlowApi(config);
+        showStatus('initStatus', '✅ API initialized successfully!', 'success');
+        log('✅ Veo3FlowApi initialized', 'success');
+      } catch (error) {
+        showStatus('initStatus', `❌ Error: ${error.message}`, 'error');
+        log(`❌ Init error: ${error.message}`, 'error');
+      }
+    }
+
+    async function testGenerateImages() {
+      if (!api) {
+        showStatus('status1', '⚠️ Please initialize API first', 'warning');
+        return;
+      }
+
+      try {
+        const prompt = document.getElementById('imagePrompt1').value;
+        const aspectRatio = document.getElementById('aspectRatio1').value;
+        const numImages = parseInt(document.getElementById('numImages1').value);
+
+        showStatus('status1', '📸 Generating images...', 'info');
+        log(`📸 Starting image generation: ${numImages} images`);
+
+        const result = await api.generateImages(prompt, {
+          aspectRatio: aspectRatio,
+          numImages: numImages,
+          guidanceScale: 'MEDIUM'
+        });
+
+        if (result.success) {
+          showStatus('status1', `✅ Generated ${result.mediaIds.length} images!`, 'success');
+          log(`✅ Generated ${result.mediaIds.length} images: ${result.mediaIds.join(', ')}`);
+
+          // Display images
+          const gallery = document.getElementById('gallery1');
+          gallery.innerHTML = '';
+          result.mediaIds.forEach((mediaId, i) => {
+            const img = document.createElement('img');
+            img.src = `https://videofx-prd.googleapis.com/v1/projects/${result.projectId}/scenes/${result.sceneId}/flowMedia/${mediaId}`;
+            img.alt = `Image ${i + 1}`;
+            img.title = mediaId;
+            gallery.appendChild(img);
+          });
+
+          // Auto-fill mediaIds for test 2
+          if (result.mediaIds.length >= 2) {
+            document.getElementById('mediaId1').value = result.mediaIds[0];
+            document.getElementById('mediaId2').value = result.mediaIds[1];
+          }
+        } else {
+          showStatus('status1', `❌ Error: ${result.error}`, 'error');
+          log(`❌ Image generation failed: ${result.error}`);
+        }
+      } catch (error) {
+        showStatus('status1', `❌ Exception: ${error.message}`, 'error');
+        log(`❌ Exception: ${error.message}`);
+      }
+    }
+
+    async function testGenerateVideo() {
+      if (!api) {
+        showStatus('status2', '⚠️ Please initialize API first', 'warning');
+        return;
+      }
+
+      try {
+        const mediaId1 = document.getElementById('mediaId1').value;
+        const mediaId2 = document.getElementById('mediaId2').value;
+        const prompt = document.getElementById('videoPrompt2').value;
+        const aspectRatio = document.getElementById('aspectRatio2').value;
+
+        if (!mediaId1 || !mediaId2) {
+          showStatus('status2', '⚠️ Please provide both Media IDs', 'warning');
+          return;
+        }
+
+        showStatus('status2', '🎬 Generating video...', 'info');
+        log(`🎬 Starting video generation with mediaIds: ${mediaId1}, ${mediaId2}`);
+
+        const result = await api.generateVideo(
+          [mediaId1, mediaId2],
+          prompt,
+          {
+            aspectRatio: aspectRatio,
+            durationSeconds: 5
+          }
+        );
+
+        if (result.success) {
+          showStatus('status2',
+            `✅ Video generation started!<br>
+            <div class="result-item">
+              <strong>Session ID:</strong> ${result.sessionId}<br>
+              <strong>Model Used:</strong> ${result.videoModelKey}<br>
+              <strong>Project ID:</strong> ${result.projectId}<br>
+              <strong>Scene ID:</strong> ${result.sceneId}
+            </div>`,
+            'success'
+          );
+          log(`✅ Video generation successful with model: ${result.videoModelKey}`);
+        } else {
+          showStatus('status2', `❌ Error: ${result.error}`, 'error');
+          log(`❌ Video generation failed: ${result.error}`);
+        }
+      } catch (error) {
+        showStatus('status2', `❌ Exception: ${error.message}`, 'error');
+        log(`❌ Exception: ${error.message}`);
+      }
+    }
+
+    async function testCompleteWorkflow() {
+      if (!api) {
+        showStatus('status3', '⚠️ Please initialize API first', 'warning');
+        return;
+      }
+
+      try {
+        const imagePrompt = document.getElementById('imagePrompt3').value;
+        const videoPrompt = document.getElementById('videoPrompt3').value;
+
+        showStatus('status3', '🚀 Running complete workflow...', 'info');
+        log('🚀 Starting complete workflow: generateImageAndVideo');
+
+        const result = await api.generateImageAndVideo(
+          imagePrompt,
+          videoPrompt,
+          {
+            imageAspectRatio: 'IMAGE_16_9',
+            videoAspectRatio: 'VIDEO_16_9',
+            numImages: 4,
+            durationSeconds: 5
+          }
+        );
+
+        if (result.success) {
+          showStatus('status3',
+            `✅ Workflow completed successfully!<br>
+            <div class="result-item">
+              <strong>Images Generated:</strong> ${result.images.mediaIds.length}<br>
+              <strong>Video Session:</strong> ${result.video.sessionId}<br>
+              <strong>Model Used:</strong> ${result.video.modelUsed}
+            </div>`,
+            'success'
+          );
+
+          log(`✅ Workflow complete: ${result.images.mediaIds.length} images, video with ${result.video.modelUsed}`);
+
+          // Display images
+          const gallery = document.getElementById('gallery3');
+          gallery.innerHTML = '';
+          result.images.mediaIds.forEach((mediaId, i) => {
+            const img = document.createElement('img');
+            img.src = `https://videofx-prd.googleapis.com/v1/projects/${api.projectId}/scenes/${api.sceneId}/flowMedia/${mediaId}`;
+            img.alt = `Image ${i + 1}`;
+            img.title = mediaId;
+            gallery.appendChild(img);
+          });
+
+          // Show detailed results
+          const resultsDiv = document.getElementById('results3');
+          resultsDiv.innerHTML = `
+            <div class="result-item">
+              <strong>Media IDs:</strong><br>
+              ${result.images.mediaIds.map((id, i) => `${i + 1}. <code>${id}</code>`).join('<br>')}
+            </div>
+          `;
+        } else {
+          showStatus('status3', `❌ Error: ${result.error}`, 'error');
+          log(`❌ Workflow failed: ${result.error}`);
+        }
+      } catch (error) {
+        showStatus('status3', `❌ Exception: ${error.message}`, 'error');
+        log(`❌ Exception: ${error.message}`);
+      }
+    }
+
+    log('🎬 Demo page loaded. Please initialize API to start.');
+  </script>
+</body>
+</html>
