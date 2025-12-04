@@ -2789,10 +2789,14 @@ Camera moves forward into the scene
 
           log(`📊 [Video ${sceneIndex + 1}] Gen ${numVariants} variants (lưu tất cả, preview variant A)...`, 'info');
 
+          // CRITICAL: Get selected lane name to use specific token
+          const selectedLaneName = document.getElementById('selectedLane').value;
+
           const videoRes = await fetch('/api/veo3/generate-start-end', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              tokenName: selectedLaneName || undefined,
               projectId: state.projectId,
               sceneId: state.sceneId,
               startImageMediaId: mediaId1,
@@ -3493,10 +3497,14 @@ Camera moves forward into the scene
 
         log(`🧪 TEST: Gọi API Veo3 với mediaID1=${mediaId1.substring(0, 20)}..., mediaID2=${mediaId2.substring(0, 20)}...`, 'info');
 
+        // CRITICAL: Get selected lane name to use specific token
+        const selectedLaneName = document.getElementById('selectedLane').value;
+
         const videoRes = await fetch('/api/veo3/generate-start-end', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            tokenName: selectedLaneName || undefined,
             projectId: state.projectId,
             sceneId: state.sceneId,
             startImageMediaId: mediaId1,
