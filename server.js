@@ -1555,6 +1555,7 @@ app.post('/api/load-token-pool', async (req, res) => {
           name: token.name,
           cookies: token.cookies,
           sessionToken: token.sessionToken,
+          authorization: token.authorization,  // CRITICAL: Copy authorization from Excel!
           accessToken: null,  // Will be fetched on first use
           lastUpdate: null
         };
@@ -1575,7 +1576,10 @@ app.post('/api/load-token-pool', async (req, res) => {
           const sessionHash = token.sessionToken
             ? crypto.createHash('sha256').update(token.sessionToken).digest('hex').slice(0, 10)
             : 'no-session';
-          log(`🔐 Token "${tokenName}": cookieHash=${cookieHash}, sessionHash=${sessionHash}`);
+          const authPreview = token.authorization
+            ? token.authorization.substring(0, 30) + '...'
+            : 'NO_AUTH';
+          log(`🔐 Token "${tokenName}": cookieHash=${cookieHash}, sessionHash=${sessionHash}, auth=${authPreview}`);
         } catch (hashErr) {
           log(`⚠️ Failed to hash cookies for token "${tokenName}": ${hashErr.message}`, 'warning');
         }

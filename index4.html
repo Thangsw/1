@@ -507,7 +507,7 @@ Slow motion close-up">Camera zoom in -out mượt mà</textarea>
       try {
         appendLog(`[${laneName}] Đang gen ảnh: "${prompt.substring(0, 50)}..."`, 'info');
 
-        const res = await fetch('/api/generate-image', {
+        const res = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
