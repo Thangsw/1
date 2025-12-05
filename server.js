@@ -3752,69 +3752,77 @@ app.post('/api/flow/generate-video', async (req, res) => {
 
     const token = await getAccessToken(false, tokenObj);
     const sessionId = generateSessionId();
-    const seed = Math.floor(Math.random() * 65536);
-
-    // CRITICAL: Use correct API endpoint (not tRPC)
     const url = 'https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoStartAndEndImage';
 
-    // CRITICAL: Use correct payload format (clientContext + requests, not tRPC format)
-    const payload = {
-      clientContext: {
-        sessionId: sessionId,
-        projectId: projectId,
-        tool: 'PINHOLE',
-        userPaygateTier: 'PAYGATE_TIER_TWO'
-      },
-      requests: [{
-        aspectRatio: aspectRatio || 'VIDEO_ASPECT_RATIO_LANDSCAPE',
-        seed: seed,
-        textInput: {
-          prompt: prompt
+    // Try FREE model first, then PAID if fails
+    const models = ['veo_3_1_i2v_s_fast_fl_ultra_relaxed', 'veo_3_1_i2v_s_fast_ultra_fl'];
+    let successResponse = null;
+    let usedModel = null;
+
+    for (const model of models) {
+      const seed = Math.floor(Math.random() * 65536);
+      const isFree = model === 'veo_3_1_i2v_s_fast_fl_ultra_relaxed';
+
+      log(`🎬 [Lane: ${laneName}] Trying ${isFree ? 'FREE' : 'PAID'} model: ${model}`);
+
+      const payload = {
+        clientContext: {
+          sessionId: sessionId,
+          projectId: projectId,
+          tool: 'PINHOLE',
+          userPaygateTier: 'PAYGATE_TIER_TWO'
         },
-        videoModelKey: videoModelKey || 'veo_3_1_i2v_s_fast_fl_ultra_relaxed',
-        startImage: {
-          mediaId: startImageMediaId
-        },
-        endImage: {
-          mediaId: endImageMediaId
-        },
-        metadata: {
-          sceneId: sceneId || crypto.randomUUID()
+        requests: [{
+          aspectRatio: aspectRatio || 'VIDEO_ASPECT_RATIO_LANDSCAPE',
+          seed: seed,
+          textInput: { prompt: prompt },
+          videoModelKey: model,
+          startImage: { mediaId: startImageMediaId },
+          endImage: { mediaId: endImageMediaId },
+          metadata: { sceneId: sceneId || crypto.randomUUID() }
+        }]
+      };
+
+      try {
+        const response = await axiosWithRetry({
+          method: 'POST',
+          url: url,
+          data: payload,
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'text/plain;charset=UTF-8'
+          }
+        }, 0, 5, laneName, tokenObj.proxy);
+
+        const operation = response.data.operations?.[0];
+        if (operation && operation.status === 'MEDIA_GENERATION_STATUS_PENDING') {
+          log(`✅ [Lane: ${laneName}] Video generation started (PENDING) with ${isFree ? 'FREE' : 'PAID'} model`);
+          successResponse = response;
+          usedModel = model;
+          break; // Success, stop trying
+        } else {
+          log(`⚠️ [Lane: ${laneName}] ${isFree ? 'FREE' : 'PAID'} model returned status: ${operation?.status}`, 'warn');
         }
-      }]
-    };
-
-    const response = await axiosWithRetry({
-      method: 'POST',
-      url: url,
-      data: payload,
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'text/plain;charset=UTF-8'
+      } catch (err) {
+        log(`⚠️ [Lane: ${laneName}] ${isFree ? 'FREE' : 'PAID'} model failed: ${err.message}`, 'warn');
       }
-    }, 0, 5, laneName, tokenObj.proxy);
+    }
 
-    // Check if generation started successfully (PENDING status)
-    const operation = response.data.operations?.[0];
-    if (operation && operation.status === 'MEDIA_GENERATION_STATUS_PENDING') {
-      log(`✅ [Lane: ${laneName}] Video generation started (PENDING) with model: ${videoModelKey}`);
-
+    if (successResponse) {
       res.json({
         success: true,
         sessionId: sessionId,
-        videoModelKey: videoModelKey,
+        videoModelKey: usedModel,
         projectId: projectId,
         sceneId: sceneId,
         mediaIds: [startImageMediaId, endImageMediaId],
-        data: response.data
+        data: successResponse.data
       });
     } else {
-      // Generation failed or unexpected status
-      log(`✗ [Lane: ${laneName}] Video generation failed - Status: ${operation?.status}`, 'error');
+      log(`✗ [Lane: ${laneName}] Both FREE and PAID models failed`, 'error');
       res.json({
         success: false,
-        error: `Unexpected status: ${operation?.status || 'unknown'}`,
-        data: response.data
+        error: 'Both FREE and PAID models failed to generate video'
       });
     }
   } catch (err) {

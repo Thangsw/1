@@ -347,11 +347,16 @@
     // VideoVeo3 stub for backward compatibility (video-veo3.js was removed)
     const VideoVeo3 = {
       async pollOperation(opId, options = {}) {
-        const { tokenName, sceneId, intervalMs = 3000, maxTries = 120 } = options;
+        const { tokenName, sceneId, laneName, intervalMs = 5000, maxTries = 120 } = options;
 
         // Use server endpoint to poll
         for (let i = 0; i < maxTries; i++) {
           try {
+            // Log polling attempt
+            if (laneName) {
+              appendLog(`[${laneName}] ⏳ Polling video status... (${i + 1}/${maxTries})`, 'info');
+            }
+
             const res = await fetch('/api/veo3/poll-operation', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -720,17 +725,31 @@
         const image1 = result1.images ? result1.images[0] : null;
         appendLog(`[${laneName}] ✅ Ảnh 1 OK: ${mediaId1.substring(0, 40)}...`, 'success');
 
-        // STEP 2: Gen ảnh 2 với Continue mode (dựa trên ảnh 1)
-        appendLog(`[${laneName}] 🎨 Gen ảnh 2 (Continue từ ảnh 1): "${imagePrompt2.substring(0, 40)}..."`, 'info');
-        const result2 = await flowApi.generateImages(imagePrompt2, {
+        // STEP 2: Gen ảnh 2 - Check if Continue mode
+        const isContinue = /^\(continue\)/i.test(imagePrompt2);
+        const cleanPrompt2 = isContinue ? imagePrompt2.replace(/^\(continue\)\s*/i, '').trim() : imagePrompt2;
+
+        if (isContinue) {
+          appendLog(`[${laneName}] 🎨 Gen ảnh 2 (Continue từ ảnh 1): "${cleanPrompt2.substring(0, 40)}..."`, 'info');
+        } else {
+          appendLog(`[${laneName}] 🎨 Gen ảnh 2 (độc lập): "${cleanPrompt2.substring(0, 40)}..."`, 'info');
+        }
+
+        const result2Options = {
           aspectRatio: imageAspectRatio,
           numImages: 1,
-          imageInputs: [{
+          tokenName: laneName
+        };
+
+        // Only add imageInputs if Continue mode
+        if (isContinue) {
+          result2Options.imageInputs = [{
             mediaId: mediaId1,
             role: 'REFERENCE'
-          }],
-          tokenName: laneName
-        });
+          }];
+        }
+
+        const result2 = await flowApi.generateImages(cleanPrompt2, result2Options);
 
         if (!result2.success || !result2.mediaIds || result2.mediaIds.length === 0) {
           throw new Error('Gen ảnh 2 thất bại: ' + (result2.error || 'No mediaIds'));
@@ -755,13 +774,13 @@
         }
 
         // Poll video status
-        appendLog(`[${laneName}] ⏳ Polling video status...`, 'info');
         if (videoResult.data && videoResult.data.operations && videoResult.data.operations.length > 0) {
           const opName = videoResult.data.operations[0].operation?.name;
           const sceneId = videoResult.data.operations[0].sceneId || videoResult.sceneId;
           if (opName) {
             const pollResult = await VideoVeo3.pollOperation(opName, {
               tokenName: laneName,
+              laneName: laneName,
               sceneId: sceneId,
               intervalMs: 5000,
               maxTries: 120
