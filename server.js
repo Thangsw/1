@@ -3580,58 +3580,69 @@ app.post('/api/flow/generate-images', async (req, res) => {
     const token = await getAccessToken(false, tokenObj);
     const sessionId = generateSessionId();
 
-    const requestBody = {
-      projectId: projectId,
-      sceneId: sceneId,
-      prompts: [prompt],
-      aspectRatio: aspectRatio,
+    // CRITICAL: Use correct API endpoint format similar to video endpoint
+    const url = 'https://aisandbox-pa.googleapis.com/v1/image:batchGenerateImages';
+
+    // Build the request payload with clientContext + requests format
+    const imageRequest = {
+      aspectRatio: aspectRatio || 'IMAGE_ASPECT_RATIO_LANDSCAPE',
+      textInput: {
+        prompt: prompt
+      },
       numberOfImages: numImages || 4,
-      guidanceScale: guidanceScale || 'MEDIUM'
+      guidanceScale: guidanceScale || 'GUIDANCE_SCALE_MEDIUM',
+      metadata: {
+        sceneId: sceneId || crypto.randomUUID()
+      }
     };
 
+    // Add imageInputs if provided (for continue mode)
     if (imageInputs && imageInputs.length > 0) {
-      requestBody.imageInputs = imageInputs;
+      imageRequest.imageInputs = imageInputs;
     }
 
-    const url = `https://videofx-prd.googleapis.com/v1/projects/${projectId}/flowMedia:batchGenerateImages`;
+    const payload = {
+      clientContext: {
+        sessionId: sessionId,
+        projectId: projectId,
+        tool: 'PINHOLE',
+        userPaygateTier: 'PAYGATE_TIER_TWO'
+      },
+      requests: [imageRequest]
+    };
 
     const response = await axiosWithRetry({
       method: 'POST',
       url: url,
-      data: requestBody,
+      data: payload,
       headers: {
-        'accept': '*/*',
-        'accept-language': 'en-US,en;q=0.9',
-        'authorization': `Bearer ${token}`,
-        'content-type': 'application/json+protobuf',
-        'origin': 'https://labs.google',
-        'referer': 'https://labs.google/',
-        'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'cross-site',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'x-client-data': 'CIq2yQEIorbJAQipncoBCN6iywEIlaHLAQj0x8wBCOPczgEYqfzNARj6kM4B',
-        'x-goog-api-client': 'gdcl/7.2.0 gl-js/ gdcl/7.2.0',
-        'x-goog-ext-353267353-jspb': '[null,null,null,116]',
-        'cookie': tokenObj.cookies || ''
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'text/plain;charset=UTF-8',
+        'Referer': 'https://labs.google/',
+        'x-browser-channel': 'stable',
+        'x-browser-year': '2025',
+        'x-client-data': 'CIyIywE='
       }
     }, 0, 5, laneName, tokenObj.proxy);
 
-    log(`✅ [Lane: ${laneName}] Generated ${response.data.mediaIds?.length || 0} images`);
+    // Extract mediaIds from response
+    const mediaIds = response.data.operations?.map(op => op.metadata?.mediaId).filter(Boolean) || [];
+
+    log(`✅ [Lane: ${laneName}] Generated ${mediaIds.length} images`);
 
     res.json({
       success: true,
       sessionId: sessionId,
-      mediaIds: response.data.mediaIds || [],
+      mediaIds: mediaIds,
       projectId: projectId,
       sceneId: sceneId,
       data: response.data
     });
   } catch (err) {
     log(`✗ Flow API generate-images failed: ${err.message}`, 'error');
+    if (err.response && err.response.data) {
+      log(`Response data: ${JSON.stringify(err.response.data)}`, 'error');
+    }
     res.json({ success: false, error: err.message });
   }
 });
@@ -3713,24 +3724,36 @@ app.post('/api/flow/generate-video', async (req, res) => {
 
     const token = await getAccessToken(false, tokenObj);
     const sessionId = generateSessionId();
+    const seed = Math.floor(Math.random() * 65536);
 
-    const requestBody = {
-      projectId: projectId,
-      sceneId: sceneId,
-      prompt: prompt,
-      aspectRatio: aspectRatio || 'VIDEO_16_9',
-      durationSeconds: durationSeconds || 5,
-      videoModelKey: videoModelKey || 'veo_3_1_i2v_s_fast_fl_ultra_relaxed',
-      startImageGenerationMediaId: startImageMediaId,
-      endImageGenerationMediaId: endImageMediaId
-    };
+    // CRITICAL: Use correct API endpoint (not tRPC)
+    const url = 'https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoStartAndEndImage';
 
-    const url = 'https://labs.google/fx/api/trpc/videoFx.batchAsyncGenerateVideoStartAndEndImage?batch=1';
-
+    // CRITICAL: Use correct payload format (clientContext + requests, not tRPC format)
     const payload = {
-      "0": {
-        "json": requestBody
-      }
+      clientContext: {
+        sessionId: sessionId,
+        projectId: projectId,
+        tool: 'PINHOLE',
+        userPaygateTier: 'PAYGATE_TIER_TWO'
+      },
+      requests: [{
+        aspectRatio: aspectRatio || 'VIDEO_ASPECT_RATIO_LANDSCAPE',
+        seed: seed,
+        textInput: {
+          prompt: prompt
+        },
+        videoModelKey: videoModelKey || 'veo_3_1_i2v_s_fast_fl_ultra_relaxed',
+        startImage: {
+          mediaId: startImageMediaId
+        },
+        endImage: {
+          mediaId: endImageMediaId
+        },
+        metadata: {
+          sceneId: sceneId || crypto.randomUUID()
+        }
+      }]
     };
 
     const response = await axiosWithRetry({
@@ -3738,38 +3761,43 @@ app.post('/api/flow/generate-video', async (req, res) => {
       url: url,
       data: payload,
       headers: {
-        'accept': '*/*',
-        'accept-language': 'en-US,en;q=0.9',
-        'authorization': `Bearer ${token}`,
-        'content-type': 'application/json',
-        'origin': 'https://labs.google',
-        'referer': 'https://labs.google/fx/tools/video-fx',
-        'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-origin',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'x-client-data': 'CIq2yQEIorbJAQipncoBCN6iywEIlaHLAQj0x8wBCOPczgEYqfzNARj6kM4B',
-        'x-same-domain': '1',
-        'cookie': tokenObj.cookies || ''
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'text/plain;charset=UTF-8',
+        'Referer': 'https://labs.google/',
+        'x-browser-channel': 'stable',
+        'x-browser-year': '2025',
+        'x-client-data': 'CIyIywE='
       }
     }, 0, 5, laneName, tokenObj.proxy);
 
-    log(`✅ [Lane: ${laneName}] Video generation started with model: ${videoModelKey}`);
+    // Check if generation started successfully (PENDING status)
+    const operation = response.data.operations?.[0];
+    if (operation && operation.status === 'MEDIA_GENERATION_STATUS_PENDING') {
+      log(`✅ [Lane: ${laneName}] Video generation started (PENDING) with model: ${videoModelKey}`);
 
-    res.json({
-      success: true,
-      sessionId: sessionId,
-      videoModelKey: videoModelKey,
-      projectId: projectId,
-      sceneId: sceneId,
-      mediaIds: [startImageMediaId, endImageMediaId],
-      data: response.data
-    });
+      res.json({
+        success: true,
+        sessionId: sessionId,
+        videoModelKey: videoModelKey,
+        projectId: projectId,
+        sceneId: sceneId,
+        mediaIds: [startImageMediaId, endImageMediaId],
+        data: response.data
+      });
+    } else {
+      // Generation failed or unexpected status
+      log(`✗ [Lane: ${laneName}] Video generation failed - Status: ${operation?.status}`, 'error');
+      res.json({
+        success: false,
+        error: `Unexpected status: ${operation?.status || 'unknown'}`,
+        data: response.data
+      });
+    }
   } catch (err) {
     log(`✗ Flow API generate-video failed: ${err.message}`, 'error');
+    if (err.response && err.response.data) {
+      log(`Response data: ${JSON.stringify(err.response.data)}`, 'error');
+    }
     res.json({ success: false, error: err.message });
   }
 });
