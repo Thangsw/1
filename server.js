@@ -3504,10 +3504,25 @@ app.post('/api/veo3/poll-operation', async (req, res) => {
       return res.json({ success: false, error: 'Missing operationName' });
     }
 
-    // Get token from pool by name (for multi-lane support)
-    const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
-    const laneName = tokenObj.name || 'default';
+    // CRITICAL: Use specific lane token if laneName provided
+    let tokenObj;
+    if (tokenName) {
+      // Read token directly from Excel instead of relying on tokenPool
+      try {
+        const allTokens = await readTokensFromFile();
+        tokenObj = allTokens.find(t => t.name === tokenName);
+        if (!tokenObj) {
+          return res.json({ success: false, error: `Lane "${tokenName}" not found in tokens.xlsx` });
+        }
+      } catch (err) {
+        return res.json({ success: false, error: `Failed to read lane: ${err.message}` });
+      }
+    } else {
+      // Use round-robin from pool
+      tokenObj = getNextToken();
+    }
 
+    const laneName = tokenObj.name || tokenName || 'default';
     const token = await getAccessToken(false, tokenObj);
 
     // CORRECT: Use batchCheckAsyncVideoGenerationStatus endpoint from user's example
@@ -3597,12 +3612,27 @@ app.post('/api/flow/generate-images', async (req, res) => {
   try {
     const { projectId, sceneId, prompt, aspectRatio, numImages, guidanceScale, imageInputs, tokenName } = req.body;
 
-    // Get token from lane
-    const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
-    const laneName = tokenObj.name || 'default';
+    // CRITICAL: Use specific lane token if laneName provided
+    let tokenObj;
+    if (tokenName) {
+      // Read token directly from Excel instead of relying on tokenPool
+      try {
+        const allTokens = await readTokensFromFile();
+        tokenObj = allTokens.find(t => t.name === tokenName);
+        if (!tokenObj) {
+          return res.json({ success: false, error: `Lane "${tokenName}" not found in tokens.xlsx` });
+        }
+        log(`📸 [Lane: ${tokenName}] Flow API - Generate images (from Excel): "${prompt.substring(0, 50)}..."`);
+      } catch (err) {
+        return res.json({ success: false, error: `Failed to read lane: ${err.message}` });
+      }
+    } else {
+      // Use round-robin from pool
+      tokenObj = getNextToken();
+      log(`📸 [Lane: ${tokenObj.name || 'default'}] Flow API - Generate images: "${prompt.substring(0, 50)}..."`);
+    }
 
-    log(`📸 [Lane: ${laneName}] Flow API - Generate images: "${prompt.substring(0, 50)}..."`);
-
+    const laneName = tokenObj.name || tokenName || 'default';
     const token = await getAccessToken(false, tokenObj);
     const sessionId = generateSessionId();
     const seed = Math.floor(Math.random() * 999999);
@@ -3769,11 +3799,27 @@ app.post('/api/flow/generate-video', async (req, res) => {
   try {
     const { projectId, sceneId, startImageMediaId, endImageMediaId, prompt, aspectRatio, durationSeconds, videoModelKey, tokenName } = req.body;
 
-    const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
-    const laneName = tokenObj.name || 'default';
+    // CRITICAL: Use specific lane token if laneName provided
+    let tokenObj;
+    if (tokenName) {
+      // Read token directly from Excel instead of relying on tokenPool
+      try {
+        const allTokens = await readTokensFromFile();
+        tokenObj = allTokens.find(t => t.name === tokenName);
+        if (!tokenObj) {
+          return res.json({ success: false, error: `Lane "${tokenName}" not found in tokens.xlsx` });
+        }
+        log(`🎬 [Lane: ${tokenName}] Flow API - Generate video (from Excel): "${prompt.substring(0, 50)}..."`);
+      } catch (err) {
+        return res.json({ success: false, error: `Failed to read lane: ${err.message}` });
+      }
+    } else {
+      // Use round-robin from pool
+      tokenObj = getNextToken();
+      log(`🎬 [Lane: ${tokenObj.name || 'default'}] Flow API - Generate video: "${prompt.substring(0, 50)}..."`);
+    }
 
-    log(`🎬 [Lane: ${laneName}] Flow API - Generate video: "${prompt.substring(0, 50)}..."`);
-
+    const laneName = tokenObj.name || tokenName || 'default';
     const token = await getAccessToken(false, tokenObj);
     const sessionId = generateSessionId();
     const url = 'https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoStartAndEndImage';
