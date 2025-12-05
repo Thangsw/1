@@ -2387,54 +2387,37 @@ Camera moves forward into the scene
     // IMAGE GENERATION WITH RETRY
     // ============================================
 
-    // Generate image with optional reference (copied from index2)
+    // Generate image with Flow API (supports Continue mode via imageInputs)
     async function generateSingleWithReference(prompt, aspectRatio, seed, refImage) {
-      const payload = { prompt, aspectRatio };
-      if (seed) payload.seed = seed;
-
-      // CRITICAL: Add laneName from selected lane to use specific token
+      // CRITICAL: Get laneName from selected lane to use specific token
       const selectedLaneName = document.getElementById('selectedLane').value;
-      if (selectedLaneName) {
-        payload.laneName = selectedLaneName;
+
+      // Build Flow API payload
+      const payload = {
+        projectId: state.projectId,
+        sceneId: state.sceneId,
+        prompt: prompt,
+        aspectRatio: aspectRatio,
+        numImages: 1,
+        tokenName: selectedLaneName || undefined
+      };
+
+      // If Continue mode (refImage provided), add imageInputs
+      if (refImage) {
+        console.log(`Using Flow API Continue mode with reference mediaId: ${refImage.generationId?.substring(0, 30)}...`);
+        payload.imageInputs = [{
+          mediaId: refImage.generationId,  // Use mediaId from previous image
+          role: 'REFERENCE'
+        }];
       }
 
-      const useReference = refImage;
+      const res = await fetch('/api/flow/generate-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
-      if (useReference) {
-        // CRITICAL: editImage API requires:
-        // - caption: prompt of PREVIOUS image (reference)
-        // - userInstruction: CURRENT prompt
-        // - seed: null (not used)
-        const editPayload = {
-          prompt: prompt,  // userInstruction (current prompt)
-          captionPrompt: useReference.captionPrompt || prompt,  // caption (previous prompt)
-          referenceImage: useReference.imageUrl,
-          aspectRatio: aspectRatio,
-          generationId: useReference.generationId,
-          seed: null  // CRITICAL: seed is null for editImage
-        };
-
-        // Add laneName if selected
-        if (selectedLaneName) {
-          editPayload.laneName = selectedLaneName;
-        }
-
-        console.log(`Using editImage API with caption: "${editPayload.captionPrompt.substring(0, 30)}..." and instruction: "${prompt.substring(0, 30)}..."`);
-
-        const res = await fetch('/api/edit', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(editPayload)
-        });
-        return await res.json();
-      } else {
-        const res = await fetch('/api/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        return await res.json();
-      }
+      return await res.json();
     }
 
     async function generateImageWithRetry(prompt, index, attempts = 0) {
@@ -2485,28 +2468,27 @@ Camera moves forward into the scene
 
           if (prevImage && prevImage.url && prevImage.generationId) {
             if (prevImage.index === index - 1) {
-              log(`\n🎨 [Ảnh ${index + 1}] Đang gen (CONTINUE từ ảnh ${prevImage.index + 1}, attempt ${attempts + 1}/${MAX_RETRIES}): "${cleanPrompt.substring(0, 50)}..."`, 'info');
+              log(`\n🎨 [Ảnh ${index + 1}] Flow API - Gen với Continue từ ảnh ${prevImage.index + 1} (attempt ${attempts + 1}/${MAX_RETRIES}): "${cleanPrompt.substring(0, 50)}..."`, 'info');
             } else {
               // Fallback to earlier image
-              log(`\n🎨 [Ảnh ${index + 1}] Đang gen (CONTINUE từ ảnh ${prevImage.index + 1} - ảnh ${index} không có, attempt ${attempts + 1}/${MAX_RETRIES}): "${cleanPrompt.substring(0, 50)}..."`, 'info');
+              log(`\n🎨 [Ảnh ${index + 1}] Flow API - Gen với Continue từ ảnh ${prevImage.index + 1} - ảnh ${index} không có (attempt ${attempts + 1}/${MAX_RETRIES}): "${cleanPrompt.substring(0, 50)}..."`, 'info');
             }
 
-            // CRITICAL: For editImage API, we need:
-            // - caption: prompt of PREVIOUS image (reference)
-            // - userInstruction: CURRENT prompt (cleanPrompt)
-            // - seed: null (not used in edit mode)
+            // CRITICAL: For Flow API Continue mode, we need:
+            // - mediaId of previous image (generationId)
+            // - role: 'REFERENCE'
             referenceImage = {
               imageUrl: prevImage.url,
               generationId: prevImage.generationId,
-              captionPrompt: prevImage.prompt  // Prompt of previous image
+              captionPrompt: prevImage.prompt  // Keep for backward compatibility
             };
           } else {
-            log(`⚠️ [Ảnh ${index + 1}] Không tìm thấy ảnh trước để Continue, dùng seed mới`, 'warning');
+            log(`⚠️ [Ảnh ${index + 1}] Không tìm thấy ảnh trước để Continue, gen ảnh độc lập`, 'warning');
           }
         }
 
         if (!isContinue) {
-          log(`\n🎨 [Ảnh ${index + 1}] Đang gen (attempt ${attempts + 1}/${MAX_RETRIES}): "${cleanPrompt.substring(0, 50)}..."`, 'info');
+          log(`\n🎨 [Ảnh ${index + 1}] Flow API - Đang gen (attempt ${attempts + 1}/${MAX_RETRIES}): "${cleanPrompt.substring(0, 50)}..."`, 'info');
         }
 
         // Use generateSingleWithReference (like index2)
@@ -2520,8 +2502,8 @@ Camera moves forward into the scene
 
         if (data.success) {
           const logMsg = referenceImage
-            ? `✅ [Ảnh ${index + 1}] Gen thành công (Continue từ ảnh ${index})!`
-            : `✅ [Ảnh ${index + 1}] Gen thành công! Seed: ${seed}`;
+            ? `✅ [Ảnh ${index + 1}] Flow API - Gen thành công (Continue từ ảnh ${index})!`
+            : `✅ [Ảnh ${index + 1}] Flow API - Gen thành công!`;
           log(logMsg, 'success');
 
           const imageData = {
@@ -2861,11 +2843,11 @@ Camera moves forward into the scene
           const selectedLaneName = document.getElementById('selectedLane').value;
 
           // DEBUG: Log state before sending request
-          log(`🐛 [DEBUG] State before generate-start-end:`, 'info');
+          log(`🐛 [DEBUG] State before Flow API video gen:`, 'info');
           log(`   state.projectId: ${state.projectId || 'UNDEFINED'}`, 'info');
           log(`   state.sceneId: ${state.sceneId || 'UNDEFINED'}`, 'info');
 
-          const videoRes = await fetch('/api/veo3/generate-start-end', {
+          const videoRes = await fetch('/api/flow/generate-video', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2876,7 +2858,7 @@ Camera moves forward into the scene
               endImageMediaId: mediaId2,
               prompt: cleanPrompt,
               aspectRatio: state.aspectRatio.replace('IMAGE_', 'VIDEO_'),
-              seeds: seeds
+              durationSeconds: 5
             })
           });
 
@@ -2887,14 +2869,17 @@ Camera moves forward into the scene
 
           const videoData = await videoRes.json();
 
-          if (videoData.success && videoData.operations && videoData.operations.length > 0) {
-            log(`✅ [Video ${sceneIndex + 1}] Đã bắt đầu gen ${videoData.operations.length} variants! Đang poll...`, 'success');
+          // Flow API returns operations in data.operations
+          const operations = videoData.data?.operations || videoData.operations;
+
+          if (videoData.success && operations && operations.length > 0) {
+            log(`✅ [Video ${sceneIndex + 1}] Flow API - Đã bắt đầu gen video! Model: ${videoData.videoModelKey}. Đang poll...`, 'success');
 
             // Poll ALL variants
             const videos = [];
-            for (let i = 0; i < videoData.operations.length; i++) {
-              const operation = videoData.operations[i];
-              const video = await pollVideoStatus(operation.operation.name, sceneIndex, i);
+            for (let i = 0; i < operations.length; i++) {
+              const operation = operations[i];
+              const video = await pollVideoStatus(operation.operation.name, sceneIndex, i, state.sceneId || videoData.sceneId);
 
               if (video) {
                 videos.push({
@@ -3175,39 +3160,46 @@ Camera moves forward into the scene
       });
     }
 
-    async function pollVideoStatus(operationName, sceneIndex, variantIndex, maxAttempts = 120) {
+    async function pollVideoStatus(operationName, sceneIndex, variantIndex, sceneId, maxAttempts = 120) {
       const variantLetter = String.fromCharCode(97 + variantIndex);
       const videoLabel = `${sceneIndex + 1}${variantLetter}`;
 
+      // Get tokenName from selected lane
+      const selectedLaneName = document.getElementById('selectedLane').value;
+
       for (let i = 0; i < maxAttempts; i++) {
-        await sleep(10000); // Poll every 10 seconds
+        await sleep(5000); // Poll every 5 seconds
 
         try {
-          const res = await fetch('/api/veo3/check-status', {
+          const res = await fetch('/api/veo3/poll-operation', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              operations: [{ operation: { name: operationName } }]
+              operationName: operationName,
+              sceneId: sceneId,
+              tokenName: selectedLaneName || undefined
             })
           });
 
           const data = await res.json();
 
-          if (data.success && data.operations && data.operations.length > 0) {
-            const op = data.operations[0];
+          // Extract status from response
+          const operation = data.operations?.[0];
+          const status = operation?.status || 'UNKNOWN';
+          const statusDisplay = status.replace('MEDIA_GENERATION_STATUS_', '');
 
-            if (op.status === 'MEDIA_GENERATION_STATUS_SUCCESSFUL' || op.status === 'SUCCESSFUL') {
-              log(`✅ [Video ${videoLabel}] Hoàn thành!`, 'success');
-              return op.video;
-            }
+          // Log with actual status every 12 polls (1 minute with 5s intervals)
+          if (i % 12 === 0 || i === 0) {
+            log(`⏳ [Video ${videoLabel}] Status: ${statusDisplay} (poll ${i + 1}/${maxAttempts})`, 'info');
+          }
 
-            if (op.status === 'MEDIA_GENERATION_STATUS_FAILED' || op.status === 'FAILED') {
-              log(`❌ [Video ${videoLabel}] Thất bại!`, 'error');
+          if (data.done) {
+            if (data.video) {
+              log(`✅ [Video ${videoLabel}] Flow API - Hoàn thành! Status: ${statusDisplay}`, 'success');
+              return data.video;
+            } else if (data.error) {
+              log(`❌ [Video ${videoLabel}] Thất bại: ${data.error}`, 'error');
               return null;
-            }
-
-            if (i % 6 === 0) { // Log every minute
-              log(`⏳ [Video ${videoLabel}] Poll #${i + 1}: ${op.status}`, 'info');
             }
           }
         } catch (err) {
@@ -3215,7 +3207,7 @@ Camera moves forward into the scene
         }
       }
 
-      log(`⏰ [Video ${videoLabel}] Timeout sau ${maxAttempts} lần`, 'error');
+      log(`⏰ [Video ${videoLabel}] Timeout sau ${maxAttempts} lần poll`, 'error');
       return null;
     }
 

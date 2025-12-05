@@ -3655,13 +3655,33 @@ app.post('/api/flow/generate-images', async (req, res) => {
       };
     }).filter(img => img.mediaId && img.fifeUrl) || [];
 
-    log(`✅ [Lane: ${laneName}] Generated ${images.length} images`);
+    log(`✅ [Lane: ${laneName}] Generated ${images.length} images, downloading...`);
+
+    // Download images to local server (like Whisk does)
+    const downloadedImages = [];
+    for (const img of images) {
+      const localPath = await downloadImage(img.fifeUrl, 'flow_img');
+      if (localPath) {
+        downloadedImages.push({
+          mediaId: img.mediaId,
+          imageUrl: localPath,  // Local path for compatibility with index3
+          fifeUrl: img.fifeUrl,  // Keep original fifeUrl
+          generationId: img.mediaId,  // Use mediaId as generationId for consistency
+          prompt: img.prompt,
+          seed: img.seed
+        });
+      }
+    }
+
+    log(`✅ [Lane: ${laneName}] Downloaded ${downloadedImages.length}/${images.length} images`);
 
     res.json({
       success: true,
       sessionId: sessionId,
-      mediaIds: images.map(img => img.mediaId),
-      images: images,  // Include full image info with fifeUrl
+      mediaIds: downloadedImages.map(img => img.mediaId),
+      images: downloadedImages,  // Include local imageUrl for index3 compatibility
+      imageUrl: downloadedImages[0]?.imageUrl,  // First image for backward compatibility
+      generationId: downloadedImages[0]?.mediaId,  // For Continue mode
       projectId: projectId,
       sceneId: sceneId,
       data: response.data
