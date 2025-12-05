@@ -719,11 +719,15 @@
         const mediaId1 = result1.mediaIds[0];
         appendLog(`[${laneName}] ✅ Ảnh 1 OK: ${mediaId1.substring(0, 40)}...`, 'success');
 
-        // STEP 2: Gen ảnh 2
-        appendLog(`[${laneName}] 🎨 Gen ảnh 2: "${imagePrompt2.substring(0, 40)}..."`, 'info');
+        // STEP 2: Gen ảnh 2 với Continue mode (dựa trên ảnh 1)
+        appendLog(`[${laneName}] 🎨 Gen ảnh 2 (Continue từ ảnh 1): "${imagePrompt2.substring(0, 40)}..."`, 'info');
         const result2 = await flowApi.generateImages(imagePrompt2, {
           aspectRatio: imageAspectRatio,
           numImages: 1,
+          imageInputs: [{
+            mediaId: mediaId1,
+            role: 'REFERENCE'
+          }],
           tokenName: laneName
         });
 
