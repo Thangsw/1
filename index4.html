@@ -739,7 +739,7 @@
 
         // STEP 3: Gen video từ 2 ảnh
         appendLog(`[${laneName}] 🎬 Gen video từ 2 ảnh: "${videoPrompt.substring(0, 40)}..."`, 'info');
-        const videoResult = await flowApi.generateVideo(mediaId1, mediaId2, videoPrompt, {
+        const videoResult = await flowApi.generateVideo([mediaId1, mediaId2], videoPrompt, {
           aspectRatio: aspectRatio,
           tokenName: laneName
         });
