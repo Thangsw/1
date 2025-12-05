@@ -3580,53 +3580,40 @@ app.post('/api/flow/generate-images', async (req, res) => {
     const token = await getAccessToken(false, tokenObj);
     const sessionId = generateSessionId();
 
-    // CRITICAL: Use correct API endpoint format similar to video endpoint
-    const url = 'https://aisandbox-pa.googleapis.com/v1/image:batchGenerateImages';
+    // Use videofx-prd endpoint for image generation (correct endpoint)
+    const url = `https://videofx-prd.googleapis.com/v1/projects/${projectId}/flowMedia:batchGenerateImages`;
 
-    // Build the request payload with clientContext + requests format
-    const imageRequest = {
-      aspectRatio: aspectRatio || 'IMAGE_ASPECT_RATIO_LANDSCAPE',
-      textInput: {
-        prompt: prompt
-      },
+    // Build the request payload
+    const requestBody = {
+      projectId: projectId,
+      sceneId: sceneId,
+      prompts: [prompt],
+      aspectRatio: aspectRatio,
       numberOfImages: numImages || 4,
-      guidanceScale: guidanceScale || 'GUIDANCE_SCALE_MEDIUM',
-      metadata: {
-        sceneId: sceneId || crypto.randomUUID()
-      }
+      guidanceScale: guidanceScale || 'MEDIUM'
     };
 
     // Add imageInputs if provided (for continue mode)
     if (imageInputs && imageInputs.length > 0) {
-      imageRequest.imageInputs = imageInputs;
+      requestBody.imageInputs = imageInputs;
     }
-
-    const payload = {
-      clientContext: {
-        sessionId: sessionId,
-        projectId: projectId,
-        tool: 'PINHOLE',
-        userPaygateTier: 'PAYGATE_TIER_TWO'
-      },
-      requests: [imageRequest]
-    };
 
     const response = await axiosWithRetry({
       method: 'POST',
       url: url,
-      data: payload,
+      data: requestBody,
       headers: {
         'Authorization': `Bearer ${token}`,
-        'Content-Type': 'text/plain;charset=UTF-8',
+        'Content-Type': 'application/json+protobuf',
         'Referer': 'https://labs.google/',
-        'x-browser-channel': 'stable',
-        'x-browser-year': '2025',
-        'x-client-data': 'CIyIywE='
+        'Origin': 'https://labs.google',
+        'x-goog-api-client': 'gdcl/7.2.0 gl-js/ gdcl/7.2.0',
+        'cookie': tokenObj.cookies || ''
       }
     }, 0, 5, laneName, tokenObj.proxy);
 
     // Extract mediaIds from response
-    const mediaIds = response.data.operations?.map(op => op.metadata?.mediaId).filter(Boolean) || [];
+    const mediaIds = response.data.mediaIds || [];
 
     log(`✅ [Lane: ${laneName}] Generated ${mediaIds.length} images`);
 
