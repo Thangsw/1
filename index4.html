@@ -717,6 +717,7 @@
         }
 
         const mediaId1 = result1.mediaIds[0];
+        const image1 = result1.images ? result1.images[0] : null;
         appendLog(`[${laneName}] ✅ Ảnh 1 OK: ${mediaId1.substring(0, 40)}...`, 'success');
 
         // STEP 2: Gen ảnh 2 với Continue mode (dựa trên ảnh 1)
@@ -736,10 +737,11 @@
         }
 
         const mediaId2 = result2.mediaIds[0];
+        const image2 = result2.images ? result2.images[0] : null;
         appendLog(`[${laneName}] ✅ Ảnh 2 OK: ${mediaId2.substring(0, 40)}...`, 'success');
 
-        // Display 2 images
-        displayLaneImages(laneName, [mediaId1, mediaId2]);
+        // Display 2 images with fifeUrl
+        displayLaneImages(laneName, [image1, image2]);
 
         // STEP 3: Gen video từ 2 ảnh
         appendLog(`[${laneName}] 🎬 Gen video từ 2 ảnh: "${videoPrompt.substring(0, 40)}..."`, 'info');
@@ -1054,7 +1056,7 @@
     /**
      * Display images for a lane in imageResults section
      */
-    function displayLaneImages(laneName, mediaIds) {
+    function displayLaneImages(laneName, images) {
       const imageResultsEl = document.getElementById('imageResults');
 
       // Clear placeholder on first image
@@ -1062,18 +1064,31 @@
         imageResultsEl.innerHTML = '';
       }
 
+      // Filter out null/undefined images
+      const validImages = images.filter(img => img && img.fifeUrl);
+
+      if (validImages.length === 0) {
+        appendLog(`⚠️ [${laneName}] No valid images to display`, 'warn');
+        return;
+      }
+
       const card = document.createElement('div');
       card.className = 'video-result-item';
+
+      // Build image grid HTML
+      const imageGrid = validImages.map(img =>
+        `<img src="${img.fifeUrl}"
+              style="width:100%;height:80px;object-fit:cover;border-radius:4px;"
+              title="${img.prompt || 'Generated image'}" />`
+      ).join('');
+
       card.innerHTML = `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:8px;background:#111827;">
-          <img src="https://videofx-prd.googleapis.com/v1/projects/${flowApiInstances.get(laneName)?.projectId}/scenes/${flowApiInstances.get(laneName)?.sceneId}/flowMedia/${mediaIds[0]}"
-               style="width:100%;height:80px;object-fit:cover;border-radius:4px;" />
-          <img src="https://videofx-prd.googleapis.com/v1/projects/${flowApiInstances.get(laneName)?.projectId}/scenes/${flowApiInstances.get(laneName)?.sceneId}/flowMedia/${mediaIds[1]}"
-               style="width:100%;height:80px;object-fit:cover;border-radius:4px;" />
+        <div style="display:grid;grid-template-columns:${validImages.length === 2 ? '1fr 1fr' : '1fr'};gap:4px;padding:8px;background:#111827;">
+          ${imageGrid}
         </div>
         <div class="video-result-body">
           <div class="lane-name">🎯 ${laneName}</div>
-          <div style="font-size:0.75rem;color:#6b7280;">Generated ${mediaIds.length} images</div>
+          <div style="font-size:0.75rem;color:#6b7280;">Generated ${validImages.length} images</div>
         </div>
       `;
       imageResultsEl.appendChild(card);

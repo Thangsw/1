@@ -3643,15 +3643,25 @@ app.post('/api/flow/generate-images', async (req, res) => {
       }
     }, 0, 5, laneName, tokenObj.proxy);
 
-    // Extract mediaIds from response - CORRECT path from user's example
-    const mediaIds = response.data.media?.map(m => m.image?.generatedImage?.mediaGenerationId).filter(Boolean) || [];
+    // Extract mediaIds AND fifeUrls from response
+    const images = response.data.media?.map(m => {
+      const generatedImage = m.image?.generatedImage;
+      return {
+        mediaId: generatedImage?.mediaGenerationId,
+        fifeUrl: generatedImage?.fifeUrl,
+        name: m.name,
+        prompt: generatedImage?.prompt,
+        seed: generatedImage?.seed
+      };
+    }).filter(img => img.mediaId && img.fifeUrl) || [];
 
-    log(`✅ [Lane: ${laneName}] Generated ${mediaIds.length} images`);
+    log(`✅ [Lane: ${laneName}] Generated ${images.length} images`);
 
     res.json({
       success: true,
       sessionId: sessionId,
-      mediaIds: mediaIds,
+      mediaIds: images.map(img => img.mediaId),
+      images: images,  // Include full image info with fifeUrl
       projectId: projectId,
       sceneId: sceneId,
       data: response.data
