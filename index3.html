@@ -2510,11 +2510,10 @@ Camera moves forward into the scene
             url: data.imageUrl,
             prompt: cleanPrompt,
             seed: seed,
-            generationId: data.generationId,
+            generationId: data.generationId,  // This IS the mediaId from Flow API - no upload needed!
             index: index,
             timestamp: Date.now(),
-            isContinue: isContinue,
-            uploadedMediaId: null  // Will be set when uploaded to Veo3
+            isContinue: isContinue
           };
 
           state.images.push(imageData);
@@ -2819,33 +2818,23 @@ Camera moves forward into the scene
             cleanPrompt = cleanPrompt + '. ' + commonVideoPrompt;
           }
 
-          // CRITICAL: Upload images to Veo3 to get valid mediaId
-          // Whisk's generationId (workflow_xxx format) is NOT compatible with Veo3 API
-          // Must upload to get UUID-format mediaId
-          log(`📤 [Video ${sceneIndex + 1}] Uploading images to Veo3...`, 'info');
-
-          const mediaId1 = await uploadImageToVeo3(img1);
-          const mediaId2 = await uploadImageToVeo3(img2);
+          // CRITICAL: Flow API already returned mediaId in generationId field
+          // No need to upload images again - use mediaId directly!
+          const mediaId1 = img1.generationId;
+          const mediaId2 = img2.generationId;
 
           if (!mediaId1 || !mediaId2) {
-            throw new Error(`Failed to upload images (img1: ${!!mediaId1}, img2: ${!!mediaId2})`);
+            throw new Error(`Missing mediaId from images (img1: ${!!mediaId1}, img2: ${!!mediaId2})`);
           }
 
-          log(`✅ [Video ${sceneIndex + 1}] Images uploaded successfully`, 'success');
-
-          // Generate multiple variants (gen all, but only preview variant A)
-          const numVariants = 2;
-          const seeds = Array.from({ length: numVariants }, () => Math.floor(Math.random() * 65536));
-
-          log(`📊 [Video ${sceneIndex + 1}] Gen ${numVariants} variants (lưu tất cả, preview variant A)...`, 'info');
+          log(`🎬 [Video ${sceneIndex + 1}] Flow API - Using mediaIds from generated images`, 'info');
+          log(`   Start image: ${mediaId1.substring(0, 40)}...`, 'info');
+          log(`   End image: ${mediaId2.substring(0, 40)}...`, 'info');
 
           // CRITICAL: Get selected lane name to use specific token
           const selectedLaneName = document.getElementById('selectedLane').value;
 
-          // DEBUG: Log state before sending request
-          log(`🐛 [DEBUG] State before Flow API video gen:`, 'info');
-          log(`   state.projectId: ${state.projectId || 'UNDEFINED'}`, 'info');
-          log(`   state.sceneId: ${state.sceneId || 'UNDEFINED'}`, 'info');
+          log(`🎬 [Video ${sceneIndex + 1}] Flow API - Đang gen video...`, 'info');
 
           const videoRes = await fetch('/api/flow/generate-video', {
             method: 'POST',
@@ -2873,7 +2862,7 @@ Camera moves forward into the scene
           const operations = videoData.data?.operations || videoData.operations;
 
           if (videoData.success && operations && operations.length > 0) {
-            log(`✅ [Video ${sceneIndex + 1}] Flow API - Đã bắt đầu gen video! Model: ${videoData.videoModelKey}. Đang poll...`, 'success');
+            log(`✅ [Video ${sceneIndex + 1}] Flow API - Video gen started! Model: ${videoData.videoModelKey}. Polling...`, 'success');
 
             // Poll ALL variants
             const videos = [];
@@ -3107,6 +3096,10 @@ Camera moves forward into the scene
       }
     }
 
+    // DEPRECATED: No longer needed with Flow API!
+    // Flow API returns mediaId directly in generationId field, no need to upload again
+    // Keeping this function commented for reference only
+    /*
     async function uploadImageToVeo3(imageData) {
       // CRITICAL: Check if already uploaded to avoid spamming Google API
       if (imageData.uploadedMediaId) {
@@ -3150,6 +3143,7 @@ Camera moves forward into the scene
         return null;
       }
     }
+    */
 
     function blobToBase64(blob) {
       return new Promise((resolve, reject) => {
