@@ -1,0 +1,489 @@
+------- Tạo ảnh - dành cho 2 ảnh độc lập, không liên quan đến nhau
+
+Request URL
+https://aisandbox-pa.googleapis.com/v1/projects/c8617569-1712-4504-89f7-c31e370d5b02/flowMedia:batchGenerateImages
+
+Request Method
+POST
+
+accept-encoding
+gzip, deflate, br, zstd
+accept-language
+vi-VN,vi;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5
+authorization
+Bearer ya29.a0ATi6K2uX9QA566PGxcu2u4XZx4K5E-pDI9x9oLqFdsR4kZWoMPS-VK0U2McaCgf1STlEbgiVXjPTppsJqabFyzkcB9ypwxEWILt3zs7778_XHvnuO82re1pQ9oCkwuIWT45EMpiivv8obE9NdHQrI3x4BAqAdnI-B7a3xhC_2djF1akWUDmC7-XS-5_msaE-JPydBWNEMOvR2EkLsXwDmPL7ixqsIfT1QRlyfiT-Qn4oG38gnIJEw50rBh4wpLLETGzqZU6gxdTou595kPInkVv2kXcKnPDs8k5jPjJv1UAgBIttjD0RIesmcKSWNFszINUrrsDDZ_jEYt1q6izYvM9L364Rej1K73MYQkjcaCgYKAYgSARYSFQHGX2MiaRlmqErOeY_HbKmEoFQLHw0367
+content-length
+215
+content-type
+text/plain;charset=UTF-8
+origin
+https://labs.google
+priority
+u=1, i
+referer
+https://labs.google/
+
+payload
+
+{
+  "requests": [
+    {
+      "clientContext": {
+        "sessionId": ";1764860477036"
+      },
+      "seed": 975394,
+      "imageModelName": "GEM_PIX_2",
+      "imageAspectRatio": "IMAGE_ASPECT_RATIO_LANDSCAPE",
+      "prompt": "Hello kitty cat, 3D animation cute style",
+      "imageInputs": []
+    }
+  ]
+}
+
+Lấy về mediaID từ phản hôi "mediaGenerationId", link ảnh tải về ở fifeUrl hoặc encoded Img
+
+{
+  "media": [
+    {
+      "name": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokMGVkNWE5OWUtMjk4NS00NTBmLWFjM2EtM2MyYjMwYzFjMDdhIgNDQUUqJDZiYTFkMzYwLTdkM2ItNDdlMC05ODVmLWY0NDk4MzgyODQzNg",
+      "workflowId": "0ed5a99e-2985-450f-ac3a-3c2b30c1c07a",
+      "image": {
+        "generatedImage": {
+          "encodedImage": "/9j/4AAQSkZJRgABAQAAAQABAAD/4RWuRXhpZgAASUkqAAgAAAADADEBAgAHAAAAMgAAABICAwACAAAAAgACAGmHBAABAAAAOgAAAJIAAABQaWNhc2EAAAQAAJAHAAQAAAAwMjIwAqAEAAEAAABVBQAAA6AEAAEAAAAAAwAAIKQCACEAAABwAAAAAAAAAGQ5OGZjYWQwNzJhYTdmYmQwMDAwMDAwMDAwMDAwMDAwAAAGAAMBAwABAAAABgAAABoBBQABAAAA4AAAABsBBQABAAAA6AAAACgBAwABAAAAAgAAAAECBAABAAAA8AAAAAICBAABAAAAthQAAAAAAABIAAAAAQAAAEgAAAABAAAA/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCABgAKADASIAAhEBAxEB/8QAHAAAAwEBAQEBAQAAAAAAAAAABAUGBwMCAQgA/8QAPRAAAQMDAwIDBQUGBQUBAAAAAQIDBAAFEQYSITFBE1FhBxQicYEyUpGhsRUWI0LB0TNEcuHwJCU1Q2KS/8QAGwEAAgIDAQAAAAAAAAAAAAAAAwUEBgECBwD/xAAuEQACAQMDAgQGAgMBAAAAAAABAgMABBESITEFQVFhcYETIjKRofAG0RQzwbH/2gAMAwEAAhEDEQA/AHus5D0e3tPNJUsBzCgnryOKpvvQXpbqWKct0v8APJ3+HmVqs92urlHf/f8AfMnRluvWb67C5IKDL7u1r6Hy9Qyld8924Xtsu/XkAoP3dtvcST3XNh4Lf/zj33svQdkaJ1JqzXlPl2v9WGT58vvO1/KHIrx5eTTst9ry9A8/nvNr5IaYmgiXV9Elb0TewVR2X9+XurqCfPzu1dX/AA+nIMvrbmuuy5DsVFmjz/f7+Bfw/wBPy/2ZQpr83t+peobP92ByJRXc6bg5fz6P/wByH5nuLPEeBl/8RQ/+5E9uZ88/VP8ArL/B7Do3+mxDCEeWOzYriuKwgAQriEIBXEIYYhxXGEMBCEOADCEIAEOISEAhxhwAa4kIQAOxriEACEIQAIQhAAhmxxABG4rjiAYw9hxrgAhkOOAIZoSYhxAKxFjsSABriHEMBhIRIAIjE7iEBEQ7GGAhDsSEAwhDsYDCFYQAIQh0gAYRIZoBDCbHQ9gAYTHGaABhCsIBiEKwgAQhCAZ//9k=",
+          "seed": 975394,
+          "mediaGenerationId": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokMGVkNWE5OWUtMjk4NS00NTBmLWFjM2EtM2MyYjMwYzFjMDdhIgNDQUUqJDZiYTFkMzYwLTdkM2ItNDdlMC05ODVmLWY0NDk4MzgyODQzNg",
+          "mediaVisibility": "PRIVATE",
+          "prompt": "Hello kitty cat, 3D animation cute style",
+          "modelNameType": "GEM_PIX_2",
+          "workflowId": "0ed5a99e-2985-450f-ac3a-3c2b30c1c07a",
+          "fifeUrl": "https://storage.googleapis.com/ai-sandbox-videofx/image/6ba1d360-7d3b-47e0-985f-f44983828436?GoogleAccessId=labs-ai-sandbox-videoserver-prod@system.gserviceaccount.com&Expires=1764883732&Signature=LNssLpcehqmgozq2FaP8h8tpTAwB7QM9mjsXUV3dlwV%2BiMqDIstqptIZObUbI0ryHWuTRMSRf2i%2BTqYQ0sZFom%2Fm4n3YQL1qCoaL3CldBTMH2%2BGY1UptUmiL77OzCbMjFoYSRPHXNrOBJCWHp07KWmr9KbHxJe6365mKZogAC0nd%2BFo6CT7NwW6LkP1%2FR468QwJCXHlflaad8tVbVDwDcXLV451onhUi3qcDF3MV3TyJR2k1ZTsKoYfOyle%2FceSLaFz1xgoXhgB04JwKQ%2F5sNVR18OvKr410umNM10yWHZqrR35gKGKkGDdFW5Zf0wJ0l1Haf4TM4GnvkqwQcVfmPw%3D%3D",
+          "aspectRatio": "IMAGE_ASPECT_RATIO_LANDSCAPE",
+          "requestData": {
+            "promptInputs": [
+              {
+                "textInput": "Hello kitty cat, 3D animation cute style"
+              }
+            ],
+            "imageGenerationRequestData": {}
+          }
+        }
+      }
+    }
+  ],
+  "workflows": [
+    {
+      "name": "45e6e523-694a-4182-84e9-d0f712f920e4",
+      "primaryMediaKey": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokNDVlNmU1MjMtNjk0YS00MTgyLTg0ZTktZDBmNzEyZjkyMGU0IgNDQUUqJDZiYTFkMzYwLTdkM2ItNDdlMC05ODVmLWY0NDk4MzgyODQzNg",
+      "metadata": {
+        "createTime": "2025-12-04T15:28:34.912769Z",
+        "primaryMediaId": "6ba1d360-7d3b-47e0-985f-f44983828436"
+      }
+    }
+  ]
+}
+
+
+------ Tính năng (continue) - tạo ảnh dùng ảnh trước làm ảnh tham chiếu
+
+* Thêm ảnh vào workflow
+
+Request URL
+https://labs.google/fx/api/trpc/videoFx.updateFlowMedia
+Request Method
+POST
+
+accept
+*/*
+accept-encoding
+gzip, deflate, br, zstd
+accept-language
+vi-VN,vi;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5
+content-length
+280
+content-type
+application/json
+cookie
+_ga=GA1.1.1655539832.1762410633; _ga_4L3D49E8S8=GS2.1.s1764186220$o1$g0$t1764186222$j58$l0$h0; EMAIL=%22taikhoan3070%40team9.edgaragencyy.io.vn%22; _ga_5K7X2T4V16=GS2.1.s1764818156$o7$g0$t1764818157$j59$l0$h0; __Secure-next-auth.callback-url=https%3A%2F%2Flabs.google; __Host-next-auth.csrf-token=54a5e9885aee1565619e6d4227b6997c867c182f2b0d5a6cb8e1db7bf4816ced%7Ccebe844924342a73c9df8c8d8616d8604a07413966ba40a676f616b7c062cebe; _ga_X2GNH8R5NS=GS2.1.s1764859042$o29$g1$t1764862102$j56$l0$h1246196370; __Secure-next-auth.session-token=eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..0WmSe9wmmUbFqgFx.p1N2O2WRUGjZmruaNy9YmHbNhVuCleeGNMcs_yjjkldudYxItKH2YwlxA-rLeZI38mZ-FWZT6syOsxWycIQSydywtjUKy4lsUPTSFcGjFyQfggD9mFeLjokoSofnWQPC6KJx1i0qulw3Y-5ZCS7H9LPGCB3YgZ3UYI-qAkR40_el6fm69UUfw5SLG7cUZa0WAURtXdil5DYWqByei2Gdhg0WEge6LSupYm6AwqdWVKRE--u-3lnsxImWWRNQF8UfiY_ILsuBEmGtfAeuJ9AUKkUsMQ3fhvOu_Vlz-ucT1Siwp6UzVhjrSuO7US2phB2Kh5eeP6G5P5VTLV6f-5vmnHPz5Hf6gmGfamsAjXPaMDLEBYVGhcTl82TxdhgOVRwY-OH3NP87jW0Kq07Lf9I0GRhqhON2hXkPAM7KJOoZQg_H7lqKOD2RxKGJTrl8t528gzhgtkeee8wYBGe37LTbj-l4vnpOWP2yCAVRCxfNa-ubIkV-NEzjIibTGyeLviNMPROrtDCh0hpuqiyHoYbFnM1Q1C2m14yog2gONCkkgB3fYkD2gAWzwoU7itXDgm_37x9WjEXbnMJMuSlYgJKy79XOhJchwlnky3BV2ZSkV1DgVXETzG1TcxP0eviIviCW6nEugCAoaYcC_7fGclOcjKSzc5MRke9fxqBQ0N-RziYyPYGEWLJjIaGNE4mIQ9SnZuUpdjKaJ7t9YGruZPnvPI_dCe2dpBbdxizv1WEs6vT-EOamdy-T9GuRV2W9R8IDKvOkgGw4XenqR5-ghl0h3ZCBS8OfLszutuSUk-FBCSnFqwr76wx-R-FVoLKCqu-j0HWsxwzekclXw5UKtHlkSewA14EBbu19H8NDwdip17RfTfbKZhnxm3pkjojzFF-NGR_yJDKnjb0wsUnOQ8Bi4H28EtHyDRyJrjebizD6bA-yAhtkyDCNs0am_3OasitcmrgSApRbykcCk94wLPGvXAMqWoa-_IZI7O4oeoA5T-7JJi4.bCVaMZk61Qur8r2iqSoyAg
+origin
+https://labs.google
+priority
+u=1, i
+referer
+https://labs.google/fx/tools/flow/project/438044f1-ead8-4b4d-beba-f2dc28f1bb70 -> project ID
+
+payload
+
+{
+  "json": {
+    "media": {
+      "name": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokMGVkNWE5OWUtMjk4NS00NTBmLWFjM2EtM2MyYjMwYzFjMDdhIgNDQUUqJDZiYTFkMzYwLTdkM2ItNDdlMC05ODVmLWY0NDk4MzgyODQzNg", //mediaID của ảnh trước
+      "mediaMetadata": {
+        "isIngredient": true
+      }
+    },
+    "updateMask": "media.media_metadata.is_ingredient"
+  }
+}
+
+phản hồi tương tự
+
+{
+  "result": {
+    "data": {
+      "json": {
+        "result": {
+          "name": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokMGVkNWE5OWUtMjk4NS00NTBmLWFjM2EtM2MyYjMwYzFjMDdhIgNDQUUqJDZiYTFkMzYwLTdkM2ItNDdlMC05ODVmLWY0NDk4MzgyODQzNg",
+          "workflowId": "0ed5a99e-2985-450f-ac3a-3c2b30c1c07a",
+          "mediaMetadata": {
+            "createTime": "1970-01-01T00:00:00Z"
+          },
+          "image": {
+            "generatedImage": {
+              "encodedImage": "/9j/4AAQSkZJRgABAQAAAQABAAD/4RWuRXhpZgAASUkqAAgAAAADADEBAgAHAAAAMgAAABICAwACAAAAAgACAGmHBAABAAAAOgAAAJIAAABQaWNhc2EAAAQAAJAHAAQAAAAwMjIwAqAEAAEAAABVBQAAA6AEAAEAAAAAAwAAIKQCACEAAABwAAAAAAAAAGQ5OGZjYWQwNzJhYTdmYmQwMDAwMDAwMDAwMDAwMDAwAAAGAAMBAwABAAAABgAAABoBBQABAAAA4AAAABsBBQABAAAA6AAAACgBAwABAAAAAgAAAAECBAABAAAA8AAAAAICBAABAAAAthQAAAAAAABIAAAAAQAAAEgAAAABAAAA/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCABgAKADASIAAhEBAxEB/8QAHAAAAwEBAQEBAQAAAAAAAAAABAUGBwMCAQgA/8QAPRAAAQMDAwIDBQUGBQUBAAAAAQIDBAAFEQYSITFBE1FhBxQicYEyUpGhsRUWI0LB0TNEcuHwJCU1Q2KS/8QAGwEAAgIDAQAAAAAAAAAAAAAAAwUEBgECBwD/xAAuEQACAQMDAgQGAgMBAAAAAAABAgMABBESITEFQVFhcYETIjKRofAG0RQzwbH/2gAMAwEAAhEDEQA/AHus5D0e3tPNJUsBzCgnryOKpvZ5bbhb7Fcr7cAhjwmwlgpO5SSsgFXHTAPGPOmntE09Etc9ttpO+JJSVIQs52kHkfmKXaf1Q7aYcmzyLU/HIrx5eTTst9ry9A8/nvNr5IaYmgiXV9Elb0TewVR2X9+XurqCfPzu1dX/AA+nIMvrbmuuy5DsVFmjz/f7+Bfw/wBPy/2ZQpr83t+peobP92ByJRXc6bg5fz6P/wByH5nuLPEeBl/8RQ/+5E9uZ88/VP8ArL/B7Do3+mxDCEeWOzYriuKwgAQriEIBXEIYYhxXGEMBCEOADCEIAEOISEAhxhwAa4kIQAOxriEACEIQAIQhAAhmxxABG4rjiAYw9hxrgAhkOOAIZoSYhxAKxFjsSABriHEMBhIRIAIjE7iEBEQ7GGAhDsSEAwhDsYDCFYQAIQh0gAYRIZoBDCbHQ9gAYTHGaABhCsIBiEKwgAQhCAZ//9k=",
+              "seed": 0,
+              "mediaGenerationId": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokMGVkNWE5OWUtMjk4NS00NTBmLWFjM2EtM2MyYjMwYzFjMDdhIgNDQUUqJDZiYTFkMzYwLTdkM2ItNDdlMC05ODVmLWY0NDk4MzgyODQzNg",
+              "prompt": "Hello kitty cat, 3D animation cute style",
+              "fifeUrl": "https://lh3.googleusercontent.com/asb/AKUKavsy1nSCJ-jARGNDHgZM9ecbDqXiQ5O3cPlxlSwIe1AJKLUyjTB2zA-OU98qy6uVbUu1_UMxhnDlf8lNa-EOBlgRQa1m8eDmW-5wm57iVL2-ojD3hOcnkik6UWLQD5nUxZbid-0bh5N1Sdl8Ll3gG_4j0OiHMCdEA4QEUBrswCQUGtlHGFxRuPZCJpollhoWv-5_uB53wjcY_0ZX4IRGZxY5Kft6AXY0eG9bciB20ilvf7VvTWy_4bCAqa8_yhzoSbg77OfT8JHLExEG-jSgGkH0SEAPCRGr6rnu4kE1B_-835q3CxsosNGVcOq9SRixKIG5OlKAcLwhfukXWk2spQ-BGjhWgWjr_zVdz_I",
+              "aspectRatio": "IMAGE_ASPECT_RATIO_LANDSCAPE"
+            }
+          }
+        },
+        "status": 200,
+        "statusText": "OK"
+      }
+    }
+  }
+}
+
+
+- Tạo ảnh
+
+Request URL
+https://aisandbox-pa.googleapis.com/v1/projects/438044f1-ead8-4b4d-beba-f2dc28f1bb70/flowMedia:batchGenerateImages
+Request Method
+POST
+
+accept
+*/*
+accept-encoding
+gzip, deflate, br, zstd
+accept-language
+vi-VN,vi;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5
+authorization
+Bearer ya29.a0ATi6K2uX9QA566PGxcu2u4XZx4K5E-pDI9x9oLqFdsR4kZWoMPS-VK0U2McaCgf1STlEbgiVXjPTppsJqabFyzkcB9ypwxEWILt3zs7778_XHvnuO82re1pQ9oCkwuIWT45EMpiivv8obE9NdHQrI3x4BAqAdnI-B7a3xhC_2djF1akWUDmC7-XS-5_msaE-JPydBWNEMOvR2EkLsXwDmPL7ixqsIfT1QRlyfiT-Qn4oG38gnIJEw50rBh4wpLLETGzqZU6gxdTou595kPInkVv2kXcKnPDs8k5jPjJv1UAgBIttjD0RIesmcKSWNFszINUrrsDDZ_jEYt1q6izYvM9L364Rej1K73MYQkjcaCgYKAYgSARYSFQHGX2MiaRlmqErOeY_HbKmEoFQLHw0367 // lấy từ token.xlsx
+
+{
+  "requests": [
+    {
+      "clientContext": {
+        "sessionId": ";1764860477036"
+      },
+      "seed": 621203,
+      "imageModelName": "GEM_PIX_2",
+      "imageAspectRatio": "IMAGE_ASPECT_RATIO_LANDSCAPE",
+      "prompt": "Kuromi đến chơi cùng",
+      "imageInputs": [
+        {
+          "name": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokMGVkNWE5OWUtMjk4NS00NTBmLWFjM2EtM2MyYjMwYzFjMDdhIgNDQUUqJDZiYTFkMzYwLTdkM2ItNDdlMC05ODVmLWY0NDk4MzgyODQzNg", // ảnh trước đó
+          "imageInputType": "IMAGE_INPUT_TYPE_REFERENCE"
+        }
+      ]
+    }
+  ]
+}
+
+payload
+
+{
+  "requests": [
+    {
+      "clientContext": {
+        "sessionId": ";1764860477036"
+      },
+      "seed": 621203,
+      "imageModelName": "GEM_PIX_2",
+      "imageAspectRatio": "IMAGE_ASPECT_RATIO_LANDSCAPE",
+      "prompt": "Kuromi đến chơi cùng",
+      "imageInputs": [
+        {
+          "name": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokMGVkNWE5OWUtMjk4NS00NTBmLWFjM2EtM2MyYjMwYzFjMDdhIgNDQUUqJDZiYTFkMzYwLTdkM2ItNDdlMC05ODVmLWY0NDk4MzgyODQzNg",
+          "imageInputType": "IMAGE_INPUT_TYPE_REFERENCE"
+        }
+      ]
+    }
+  ]
+}
+
+{
+  "media": [
+    {
+      "name": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokOGM1M2NlZTktMDYyZS00MDc1LThlNzAtN2E0ODc5ZDg1NWZmIgNDQUUqJGQyMTYwZjg2LTM3ZGQtNGNmZi05NzZjLWM5Y2ZiMmE0ZmJjNw",
+      "workflowId": "8c53cee9-062e-4075-8e70-7a4879d855ff",
+      "image": {
+        "generatedImage": {
+          "encodedImage": "/9j/4AAQSkZJRgABAQAAAQABAAD/4RcARXhpZgAASUkqAAgAAAADADEBAgAHAAAAMgAAABICAwACAAAAAgACAGmHBAABAAAAOgAAAJIAAABQaWNhc2EAAAQAAJAHAAQAAAAwMjIwAqAEAAEAAABVBQAAA6AEAAEAAAAAAwAAIKQCACEAAABwAAAAAAAAAGY1MDRjMWFmN2Y5MWI4NDQwMDAwMDAwMDAwMDAwMDAwAAAGAAMBAwABAAAABgAAABoBBQABAAAA4AAAABsBBQxEkK4wgAlEcih7DAcdMg0OgAlcVxhXGBK4tREQAS1i1ERXACSYrkLkkAidxEJDwGIlcVxCAQwhCABCEIAHFcQ4AJCaFcQAKww4zABXGGuIYz//2Q==",
+          "seed": 621203,
+          "mediaGenerationId": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokOGM1M2NlZTktMDYyZS00MDc1LThlNzAtN2E0ODc5ZDg1NWZmIgNDQUUqJGQyMTYwZjg2LTM3ZGQtNGNmZi05NzZjLWM5Y2ZiMmE0ZmJjNw",
+          "mediaVisibility": "PRIVATE",
+          "prompt": "Kuromi comes to play",
+          "modelNameType": "GEM_PIX_2",
+          "workflowId": "8c53cee9-062e-4075-8e70-7a4879d855ff",
+          "fifeUrl": "https://storage.googleapis.com/ai-sandbox-videofx/image/d2160f86-37dd-4cff-976c-c9cfb2a4fbc7?GoogleAccessId=labs-ai-sandbox-videoserver-prod@system.gserviceaccount.com&Expires=1764884241&Signature=LLFczyV1mHUsk%2FllzMsHrJ%2BnT%2FH3SAEUsTBtrYDcsYMZWFOf5cFFHR9PUTlvCXgl9FH2lAoyNE%2FbjkllypoOqlzkpIAEeyKCjIOsfMkBE%2BScVrFYlT08Qice4dClFSShyPUjKb%2Fkz%2FvTP6So0a4U%2F%2F9QCXU86jDu5kerTj48ZC1zB1dxk%2B5RcjqZ1hYjepiNyIdf784tyYOloSO9fBE2BN98VxX0%2B5XHeLkjW7LB%2FqB5nw%2FSnqBaOPsb1%2FDzoGAUYKzotX19%2F3UMeQtASUtLkQ9dbn9VouNhBKGXuOEOwXsPMNTYWiG%2BQmWAQyBZDAM1sYSZy8Qwk2ArWzjsiZC9cQ%3D%3D",
+          "aspectRatio": "IMAGE_ASPECT_RATIO_LANDSCAPE",
+          "requestData": {
+            "promptInputs": [
+              {
+                "textInput": "Kuromi đến chơi cùng"
+              }
+            ],
+            "imageGenerationRequestData": {
+              "imageGenerationImageInputs": [
+                {
+                  "mediaGenerationId": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokMGVkNWE5OWUtMjk4NS00NTBmLWFjM2EtM2MyYjMwYzFjMDdhIgNDQUUqJDZiYTFkMzYwLTdkM2ItNDdlMC05ODVmLWY0NDk4MzgyODQzNg",
+                  "imageInputType": "IMAGE_INPUT_TYPE_REFERENCE"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "workflows": [
+    {
+      "name": "7d9c4a77-5c71-4769-afe1-39619c499a66",
+      "primaryMediaKey": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokN2Q5YzRhNzctNWM3MS00NzY5LWFmZTEtMzk2MTljNDk5YTY2IgNDQUUqJGQyMTYwZjg2LTM3ZGQtNGNmZi05NzZjLWM5Y2ZiMmE0ZmJjNw",
+      "metadata": {
+        "createTime": "2025-12-04T15:37:00.472508Z",
+        "primaryMediaId": "d2160f86-37dd-4cff-976c-c9cfb2a4fbc7"
+      }
+    }
+  ]
+}
+
+----- Tạo video
+ 
+
+Phương án 1:
+
+
+payload
+{
+  "clientContext": {
+    "sessionId": ";1764860477036",
+    "projectId": "438044f1-ead8-4b4d-beba-f2dc28f1bb70",
+    "tool": "PINHOLE",
+    "userPaygateTier": "PAYGATE_TIER_TWO"
+  },
+  "requests": [
+    {
+      "aspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
+      "seed": 5001,
+      "textInput": {
+        "prompt": "kuromi nhảy bên này, nhảy bên kia"
+      },
+      "videoModelKey": "veo_3_1_i2v_s_fast_fl_ultra_relaxed",
+      "startImage": {
+        "mediaId": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokMGVkNWE5OWUtMjk4NS00NTBmLWFjM2EtM2MyYjMwYzFjMDdhIgNDQUUqJDZiYTFkMzYwLTdkM2ItNDdlMC05ODVmLWY0NDk4MzgyODQzNg"
+      },
+      "endImage": {
+        "mediaId": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokOGM1M2NlZTktMDYyZS00MDc1LThlNzAtN2E0ODc5ZDg1NWZmIgNDQUUqJGQyMTYwZjg2LTM3ZGQtNGNmZi05NzZjLWM5Y2ZiMmE0ZmJjNw"
+      },
+      "metadata": {
+        "sceneId": "d9b1baf0-4354-4bc0-925b-0ce11edf5845"
+      }
+    },
+    {
+      "aspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
+      "seed": 25828,
+      "textInput": {
+        "prompt": "kuromi nhảy bên này, nhảy bên kia"
+      },
+      "videoModelKey": "veo_3_1_i2v_s_fast_fl_ultra_relaxed",
+      "startImage": {
+        "mediaId": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokMGVkNWE5OWUtMjk4NS00NTBmLWFjM2EtM2MyYjMwYzFjMDdhIgNDQUUqJDZiYTFkMzYwLTdkM2ItNDdlMC05ODVmLWY0NDk4MzgyODQzNg"
+      },
+      "endImage": {
+        "mediaId": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokOGM1M2NlZTktMDYyZS00MDc1LThlNzAtN2E0ODc5ZDg1NWZmIgNDQUUqJGQyMTYwZjg2LTM3ZGQtNGNmZi05NzZjLWM5Y2ZiMmE0ZmJjNw"
+      },
+      "metadata": {
+        "sceneId": "306d80c0-54f5-441f-9c3b-df59d127bdbe"
+      }
+    }
+  ]
+}
+
+
+Phương án 2:
+Payload là
+{
+  "clientContext": {
+    "sessionId": ";1764860477036",
+    "projectId": "438044f1-ead8-4b4d-beba-f2dc28f1bb70",
+    "tool": "PINHOLE",
+    "userPaygateTier": "PAYGATE_TIER_TWO"
+  },
+  "requests": [
+    {
+      "aspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
+      "seed": 457,
+      "textInput": {
+        "prompt": "Kuromi trốn sau lưng hello kitty"
+      },
+      "videoModelKey": "veo_3_1_i2v_s_fast_ultra_fl",
+      "startImage": {
+        "mediaId": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokMGVkNWE5OWUtMjk4NS00NTBmLWFjM2EtM2MyYjMwYzFjMDdhIgNDQUUqJDZiYTFkMzYwLTdkM2ItNDdlMC05ODVmLWY0NDk4MzgyODQzNg"
+      },
+      "endImage": {
+        "mediaId": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokOGM1M2NlZTktMDYyZS00MDc1LThlNzAtN2E0ODc5ZDg1NWZmIgNDQUUqJGQyMTYwZjg2LTM3ZGQtNGNmZi05NzZjLWM5Y2ZiMmE0ZmJjNw"
+      },
+      "metadata": {
+        "sceneId": "fe803209-2759-4e5f-9852-eda334ab29a0"
+      }
+    },
+    {
+      "aspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
+      "seed": 24100,
+      "textInput": {
+        "prompt": "Kuromi trốn sau lưng hello kitty"
+      },
+      "videoModelKey": "veo_3_1_i2v_s_fast_ultra_fl",
+      "startImage": {
+        "mediaId": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokMGVkNWE5OWUtMjk4NS00NTBmLWFjM2EtM2MyYjMwYzFjMDdhIgNDQUUqJDZiYTFkMzYwLTdkM2ItNDdlMC05ODVmLWY0NDk4MzgyODQzNg"
+      },
+      "endImage": {
+        "mediaId": "CAMSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokOGM1M2NlZTktMDYyZS00MDc1LThlNzAtN2E0ODc5ZDg1NWZmIgNDQUUqJGQyMTYwZjg2LTM3ZGQtNGNmZi05NzZjLWM5Y2ZiMmE0ZmJjNw"
+      },
+      "metadata": {
+        "sceneId": "137a24d0-5454-492d-8219-e55645819e5a"
+      }
+    }
+  ]
+}
+
+
+
+- Kiểm tra 5s/lần
+Request URL
+https://aisandbox-pa.googleapis.com/v1/video:batchCheckAsyncVideoGenerationStatus
+Request Method
+POST
+{
+  "operations": [
+    {
+      "operation": {
+        "name": "55fe993ae2dab41b6a2f507d8296dd8e"
+      },
+      "sceneId": "d9b1baf0-4354-4bc0-925b-0ce11edf5845",
+      "status": "MEDIA_GENERATION_STATUS_ACTIVE"
+    },
+    {
+      "operation": {
+        "name": "1ebcad7e054e22d38371ced4bbdaa4dd"
+      },
+      "sceneId": "306d80c0-54f5-441f-9c3b-df59d127bdbe",
+      "status": "MEDIA_GENERATION_STATUS_ACTIVE"
+    }
+  ]
+}
+
+Nếu phản hồi là MEDIA_GENERATION_STATUS_SUCCESSFUL thì đã gen xong, tải về máy bằng fifeUrl 
+{
+  "operations": [
+    {
+      "operation": {
+        "name": "55fe993ae2dab41b6a2f507d8296dd8e",
+        "metadata": {
+          "@type": "type.googleapis.com/google.internal.labs.aisandbox.v1.Media",
+          "name": "CAUSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokOWI5YjUyYTAtNDk2YS00M2RlLWEzMDQtMmI2YzNiNzUxZTI1IgNDQUUqJDdiOWMwZDY0LWRjNGUtNDZlYi1hZmYyLTk2YzU3OWY3NDViMg",
+          "video": {
+            "seed": 5001,
+            "mediaGenerationId": "CAUSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokOWI5YjUyYTAtNDk2YS00M2RlLWEzMDQtMmI2YzNiNzUxZTI1IgNDQUUqJDdiOWMwZDY0LWRjNGUtNDZlYi1hZmYyLTk2YzU3OWY3NDViMg",
+            "prompt": "kuromi nhảy bên này, nhảy bên kia",
+            "fifeUrl": "https://storage.googleapis.com/ai-sandbox-videofx/video/7b9c0d64-dc4e-46eb-aff2-96c579f745b2?GoogleAccessId=labs-ai-sandbox-videoserver-prod@system.gserviceaccount.com&Expires=1764884693&Signature=gCvZEEPOdIW7phmt5PLBWr2eJ85B5ansgB3LsAQPmNY0iVUphcPu7APWlnHCKCxmRKzVD0jZVuD%2B%2FsdpclcgaDEQKg%2FyCSrnPgtyaaCNUGZxzmW3lrap%2Fjps4w0dhwJhEeLyciKC0VPdQJAAWtDGgWmYZ7VgmVNX4X4FoVg08mXjy3K3%2Bxx5ExRfqdwfRvz6POqDo%2BXibmi%2FLC5TuIhlgyeAdx4dNt93kuXfhkFzLLHu0RZt3M1AXu2o9TroL7YrBVDLgbGwWCcYXfEsD7bTiZ0G545MNQTjoexc0%2FQsSYiLLSGz9URLR%2FdQ6CjyrnYaHqu%2BXwOAU7A0zfgVMJ2xKQ%3D%3D",
+            "mediaVisibility": "PRIVATE",
+            "servingBaseUri": "https://storage.googleapis.com/ai-sandbox-videofx/image/7b9c0d64-dc4e-46eb-aff2-96c579f745b2?GoogleAccessId=labs-ai-sandbox-videoserver-prod@system.gserviceaccount.com&Expires=1764884695&Signature=Y%2F5vfIsmYrxBRGap8V6ziNRrBBYzM47KsML%2FQ%2FOAvM6SS%2BGkCsmotk04Kzk7S6kGWq3W0rWkbp3v4VW41oLguujgkGht%2FWarbqChL2n7xtrYk6H7vDqvJiXM4d01snSy0DAApI5Vqh88vW62eqxgxXHVBFiU07V45%2BpSQPWYOknrl6kLBqOe%2F60Ubzv4zf6SyTu3SGnY0qRK6HcUKe2mkjDkUfRcgGweoEx4u452WgPpNVQ9aeFmS3S2HIJIe63hpQjfiV1atf9SiU2ApNhzcRoB9iJX%2BTPmyHHMtcRtClZ%2FEfxnv%2BDl%2B2obB07Qk2rOhVn97h7TK74uSAPvWgPf%2Bw%3D%3D",
+            "model": "veo_3_1_i2v_s_fast_fl_ultra_relaxed",
+            "isLooped": false,
+            "aspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE"
+          }
+        }
+      },
+      "sceneId": "d9b1baf0-4354-4bc0-925b-0ce11edf5845",
+      "mediaGenerationId": "CAUSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokOWI5YjUyYTAtNDk2YS00M2RlLWEzMDQtMmI2YzNiNzUxZTI1IgNDQUUqJDdiOWMwZDY0LWRjNGUtNDZlYi1hZmYyLTk2YzU3OWY3NDViMg",
+      "status": "MEDIA_GENERATION_STATUS_SUCCESSFUL"
+    }
+  ],
+  "remainingCredits": 44710
+}
+
+Tại sao lại có 2 phương án? -> Phương án 1 ưu tiên trước ( không mất credit), nếu báo lỗi thì chuyển sang phương án 2
+
+nếu gen video có phản hồi như này là thành công
+{
+  "operations": [
+    {
+      "operation": {
+        "name": "2587c09ba145b4c157502f8400dd03df"
+      },
+      "sceneId": "1cc818cd-fb35-45a4-9acc-f22abb91a33e",
+      "status": "MEDIA_GENERATION_STATUS_PENDING"
+    }
+  ],
+  "remainingCredits": 44970
+}
+
+Sau đó check 5s/lần
+
+Request URL
+https://aisandbox-pa.googleapis.com/v1/video:batchCheckAsyncVideoGenerationStatus
+Request Method
+POST
+{
+  "operations": [
+    {
+      "operation": {
+        "name": "51fb1eb1bec6a7f7cb525dfa7c7a8167"
+      },
+      "sceneId": "b56f7d3f-3e34-4b56-9891-b9835e017563",
+      "status": "MEDIA_GENERATION_STATUS_ACTIVE"
+    }
+  ]
+}
+
+nếu trả về "status": "MEDIA_GENERATION_STATUS_SUCCESSFUL" là thành công, link tải ở "fifeUrl": 
+
+{
+  "operations": [
+    {
+      "operation": {
+        "name": "51fb1eb1bec6a7f7cb525dfa7c7a8167",
+        "metadata": {
+          "@type": "type.googleapis.com/google.internal.labs.aisandbox.v1.Media",
+          "name": "CAUSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokNGZiMzcxMmMtYmRiNi00N2NkLThhOTItNGQ5NmQwYjNlNmE3IgNDQUUqJDk3Mzk4ZGViLTM5Y2YtNGQ1MC1hNzVjLWRhNGIwZjI0Yzc0OQ",
+          "video": {
+            "seed": 23779,
+            "mediaGenerationId": "CAUSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokNGZiMzcxMmMtYmRiNi00N2NkLThhOTItNGQ5NmQwYjNlNmE3IgNDQUUqJDk3Mzk4ZGViLTM5Y2YtNGQ1MC1hNzVjLWRhNGIwZjI0Yzc0OQ",
+            "prompt": "sinamoro nhay mua",
+            "fifeUrl": "https://storage.googleapis.com/ai-sandbox-videofx/video/97398deb-39cf-4d50-a75c-da4b0f24c749?GoogleAccessId=labs-ai-sandbox-videoserver-prod@system.gserviceaccount.com&Expires=1764927649&Signature=MzVM9IpXahhZfAh6FiP2bNUsRzCMcYMI6JUd1JA8Y7FWis4bJHgkXf5err0T5GRVz1VxQi1paWzXLdWCBqRRSbRWuC1s3eLFFypacZofiXkn1dY3z8qbzDn%2FwfEzMEig8ieWHAbYyXgG18h%2BxjrsbgniqBdWd9B9ingQUYxP6UH4HMwnyzUIfulOMmGiPVq%2FfSCTMz6n3XZuETlPsjoqksjxo%2F%2FENjs%2BkeSR4frq8Gpv%2F7KMIasitCITuZHiaIGSbD9TyC1Jvhm6nW5hfBFxx%2F%2Bc7v4JbMctgr0OjXbwwsD%2F%2By%2FvT4uCiVWsq2hn84ZrN%2BJeA7NiW8%2BG0GG1eEMxqg%3D%3D",
+            "mediaVisibility": "PRIVATE",
+            "servingBaseUri": "https://storage.googleapis.com/ai-sandbox-videofx/image/97398deb-39cf-4d50-a75c-da4b0f24c749?GoogleAccessId=labs-ai-sandbox-videoserver-prod@system.gserviceaccount.com&Expires=1764927651&Signature=SX%2FCTn42r7Ze1HQq7OWt4j5oJU53tvx6H6XjAOjpU4taZOKGPfXE5po3fHqvKOQRPfGA%2FyUbL6p5%2FHdlK%2FoV46tMY8P4Io0d9a4TPS8lB%2BSDrfsJlPfeqosT5jyH5fcx970a4RsaB7pvhA60O3O%2FbxUyl%2FisD0b0u1NW7LO1XjtHQ71YJZqsNPbcDWmSmwKX68AdVtkW7%2FEmArBFEwzm%2FqPulr7uOB4NUGEI5mOxqwmy3%2BA2fEXajnnCvPYe%2Bz83DlBMRqdWqipjAPHvl%2FBB8hNWr6ySRL1U4m27xXRN7JB7rmKYHQy%2F0AaHWqEvHN2zC1dZAEFAcIqJ1JA%2FBpziiA%3D%3D",
+            "model": "veo_3_1_t2v_fast",
+            "audioGenerationFailures": [
+              "AUDIO_FILTER_GENERIC"
+            ],
+            "isLooped": false,
+            "aspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE"
+          }
+        }
+      },
+      "sceneId": "b56f7d3f-3e34-4b56-9891-b9835e017563",
+      "mediaGenerationId": "CAUSJDQzODA0NGYxLWVhZDgtNGI0ZC1iZWJhLWYyZGMyOGYxYmI3MBokNGZiMzcxMmMtYmRiNi00N2NkLThhOTItNGQ5NmQwYjNlNmE3IgNDQUUqJDk3Mzk4ZGViLTM5Y2YtNGQ1MC1hNzVjLWRhNGIwZjI0Yzc0OQ",
+      "status": "MEDIA_GENERATION_STATUS_SUCCESSFUL",
+      "audioGenerationFailures": [
+        "AUDIO_FILTER_GENERIC"
+      ]
+    }
+  ],
+  "remainingCredits": 80
+}
