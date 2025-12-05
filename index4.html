@@ -352,11 +352,6 @@
         // Use server endpoint to poll
         for (let i = 0; i < maxTries; i++) {
           try {
-            // Log polling attempt
-            if (laneName) {
-              appendLog(`[${laneName}] ⏳ Polling video status... (${i + 1}/${maxTries})`, 'info');
-            }
-
             const res = await fetch('/api/veo3/poll-operation', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -365,8 +360,21 @@
 
             const data = await res.json();
 
+            // Extract status from response
+            const operation = data.operations?.[0];
+            const status = operation?.status || 'UNKNOWN';
+            const statusDisplay = status.replace('MEDIA_GENERATION_STATUS_', '');
+
+            // Log with actual status
+            if (laneName) {
+              appendLog(`[${laneName}] ⏳ Video status: ${statusDisplay} (poll ${i + 1}/${maxTries})`, 'info');
+            }
+
             if (data.done) {
               if (data.video) {
+                if (laneName) {
+                  appendLog(`[${laneName}] ✅ Video status: SUCCESSFUL`, 'success');
+                }
                 return {
                   video: {
                     url: data.video.url || data.video.uri,
