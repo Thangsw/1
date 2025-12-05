@@ -3498,7 +3498,7 @@ app.post('/api/veo3/generate-start-end', async (req, res) => {
 // Poll video operation status
 app.post('/api/veo3/poll-operation', async (req, res) => {
   try {
-    const { operationName, tokenName } = req.body;
+    const { operationName, sceneId, tokenName } = req.body;
 
     if (!operationName) {
       return res.json({ success: false, error: 'Missing operationName' });
@@ -3510,47 +3510,69 @@ app.post('/api/veo3/poll-operation', async (req, res) => {
 
     const token = await getAccessToken(false, tokenObj);
 
-    // Poll operation
+    // CORRECT: Use batchCheckAsyncVideoGenerationStatus endpoint from user's example
+    const url = 'https://aisandbox-pa.googleapis.com/v1/video:batchCheckAsyncVideoGenerationStatus';
+
+    const payload = {
+      operations: [{
+        operation: {
+          name: operationName
+        },
+        sceneId: sceneId || crypto.randomUUID(),
+        status: 'MEDIA_GENERATION_STATUS_ACTIVE'
+      }]
+    };
+
     const response = await axiosWithRetry({
-      method: 'GET',
-      url: `https://aisandbox-pa.googleapis.com/v1/${operationName}`,
+      method: 'POST',
+      url: url,
+      data: payload,
       headers: {
         'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Referer': 'https://labs.google/',
-        'x-client-data': 'CIyIywE='
+        'Content-Type': 'text/plain;charset=UTF-8'
       }
     }, 0, 3, laneName, tokenObj.proxy);
 
     const data = response.data;
 
-    // Check if done
-    if (data.done) {
-      if (data.response && data.response.videos && data.response.videos.length > 0) {
-        const video = data.response.videos[0];
+    // Check response format from user's example
+    if (data.operations && data.operations.length > 0) {
+      const operation = data.operations[0];
+
+      // Check if SUCCESSFUL
+      if (operation.status === 'MEDIA_GENERATION_STATUS_SUCCESSFUL') {
+        const video = operation.operation?.metadata?.video;
+        if (video && video.fifeUrl) {
+          res.json({
+            success: true,
+            done: true,
+            video: {
+              url: video.fifeUrl,
+              mediaId: operation.mediaGenerationId || video.mediaGenerationId
+            }
+          });
+        } else {
+          res.json({
+            success: true,
+            done: true,
+            error: 'No video URL in successful response'
+          });
+        }
+      } else if (operation.status === 'MEDIA_GENERATION_STATUS_FAILED' ||
+                 operation.status === 'MEDIA_GENERATION_STATUS_CANCELLED') {
         res.json({
           success: true,
           done: true,
-          video: {
-            url: video.uri || video.url,
-            mediaId: video.name || video.mediaId
-          }
-        });
-      } else if (data.error) {
-        res.json({
-          success: true,
-          done: true,
-          error: data.error.message || 'Video generation failed'
+          error: `Video generation ${operation.status}`
         });
       } else {
+        // Still PENDING or ACTIVE
         res.json({
           success: true,
-          done: true,
-          error: 'No video in response'
+          done: false
         });
       }
     } else {
-      // Not done yet
       res.json({
         success: true,
         done: false

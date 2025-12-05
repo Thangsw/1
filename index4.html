@@ -347,7 +347,7 @@
     // VideoVeo3 stub for backward compatibility (video-veo3.js was removed)
     const VideoVeo3 = {
       async pollOperation(opId, options = {}) {
-        const { tokenName, intervalMs = 3000, maxTries = 120 } = options;
+        const { tokenName, sceneId, intervalMs = 3000, maxTries = 120 } = options;
 
         // Use server endpoint to poll
         for (let i = 0; i < maxTries; i++) {
@@ -355,7 +355,7 @@
             const res = await fetch('/api/veo3/poll-operation', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ operationName: opId, tokenName })
+              body: JSON.stringify({ operationName: opId, sceneId: sceneId, tokenName })
             });
 
             const data = await res.json();
@@ -752,9 +752,11 @@
         appendLog(`[${laneName}] ⏳ Polling video status...`, 'info');
         if (videoResult.data && videoResult.data.operations && videoResult.data.operations.length > 0) {
           const opName = videoResult.data.operations[0].operation?.name;
+          const sceneId = videoResult.data.operations[0].sceneId || videoResult.sceneId;
           if (opName) {
             const pollResult = await VideoVeo3.pollOperation(opName, {
               tokenName: laneName,
+              sceneId: sceneId,
               intervalMs: 5000,
               maxTries: 120
             });
