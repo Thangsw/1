@@ -3825,15 +3825,19 @@ app.post('/api/flow/generate-video', async (req, res) => {
     const url = 'https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoStartAndEndImage';
 
     // Try FREE model first, then PAID if fails
-    const models = ['veo_3_1_i2v_s_fast_fl_ultra_relaxed', 'veo_3_1_i2v_s_fast_ultra_fl'];
+    const models = [
+      { key: 'veo_3_1_i2v_s_fast_fl_ultra_relaxed', name: 'FREE (không mất credit)' },
+      { key: 'veo_3_1_i2v_s_fast_ultra_fl', name: 'PAID (mất credit)' }
+    ];
     let successResponse = null;
     let usedModel = null;
 
-    for (const model of models) {
+    for (const modelInfo of models) {
+      const model = modelInfo.key;
       const seed = Math.floor(Math.random() * 65536);
       const isFree = model === 'veo_3_1_i2v_s_fast_fl_ultra_relaxed';
 
-      log(`🎬 [Lane: ${laneName}] Trying ${isFree ? 'FREE' : 'PAID'} model: ${model}`);
+      log(`🎬 [Lane: ${laneName}] Trying ${modelInfo.name}...`);
 
       const payload = {
         clientContext: {
@@ -3866,15 +3870,15 @@ app.post('/api/flow/generate-video', async (req, res) => {
 
         const operation = response.data.operations?.[0];
         if (operation && operation.status === 'MEDIA_GENERATION_STATUS_PENDING') {
-          log(`✅ [Lane: ${laneName}] Video generation started (PENDING) with ${isFree ? 'FREE' : 'PAID'} model`);
+          log(`✅ [Lane: ${laneName}] SUCCESS with ${modelInfo.name}!`);
           successResponse = response;
           usedModel = model;
           break; // Success, stop trying
         } else {
-          log(`⚠️ [Lane: ${laneName}] ${isFree ? 'FREE' : 'PAID'} model returned status: ${operation?.status}`, 'warn');
+          log(`⚠️ [Lane: ${laneName}] ${modelInfo.name} returned status: ${operation?.status}, trying next model...`, 'warn');
         }
       } catch (err) {
-        log(`⚠️ [Lane: ${laneName}] ${isFree ? 'FREE' : 'PAID'} model failed: ${err.message}`, 'warn');
+        log(`⚠️ [Lane: ${laneName}] ${modelInfo.name} failed: ${err.message}, trying next model...`, 'warn');
       }
     }
 

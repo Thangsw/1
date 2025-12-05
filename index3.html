@@ -2862,7 +2862,12 @@ Camera moves forward into the scene
           const operations = videoData.data?.operations || videoData.operations;
 
           if (videoData.success && operations && operations.length > 0) {
-            log(`✅ [Video ${sceneIndex + 1}] Flow API - Video gen started! Model: ${videoData.videoModelKey}. Polling...`, 'success');
+            // Determine if FREE or PAID model was used
+            const isFreeModel = videoData.videoModelKey === 'veo_3_1_i2v_s_fast_fl_ultra_relaxed';
+            const modelType = isFreeModel ? '🆓 FREE (không mất credit)' : '💳 PAID (mất credit)';
+            log(`✅ [Video ${sceneIndex + 1}] Flow API - Video gen started!`, 'success');
+            log(`   Model: ${modelType}`, 'success');
+            log(`   Full model: ${videoData.videoModelKey}`, 'info');
 
             // Poll ALL variants
             const videos = [];
