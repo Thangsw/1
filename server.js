@@ -3579,41 +3579,50 @@ app.post('/api/flow/generate-images', async (req, res) => {
 
     const token = await getAccessToken(false, tokenObj);
     const sessionId = generateSessionId();
+    const seed = Math.floor(Math.random() * 999999);
 
-    // Use videofx-prd endpoint for image generation (correct endpoint)
-    const url = `https://videofx-prd.googleapis.com/v1/projects/${projectId}/flowMedia:batchGenerateImages`;
+    // CORRECT endpoint from user's working example
+    const url = `https://aisandbox-pa.googleapis.com/v1/projects/${projectId}/flowMedia:batchGenerateImages`;
 
-    // Build the request payload
-    const requestBody = {
-      projectId: projectId,
-      sceneId: sceneId,
-      prompts: [prompt],
-      aspectRatio: aspectRatio,
-      numberOfImages: numImages || 4,
-      guidanceScale: guidanceScale || 'MEDIUM'
-    };
-
-    // Add imageInputs if provided (for continue mode)
+    // Build imageInputs array for continue mode
+    const imageInputsArray = [];
     if (imageInputs && imageInputs.length > 0) {
-      requestBody.imageInputs = imageInputs;
+      imageInputs.forEach(input => {
+        imageInputsArray.push({
+          name: input.mediaId || input.name,
+          imageInputType: input.role === 'REFERENCE' ? 'IMAGE_INPUT_TYPE_REFERENCE' : 'IMAGE_INPUT_TYPE_REFERENCE'
+        });
+      });
     }
+
+    // CORRECT payload format from user's working example
+    const payload = {
+      requests: [{
+        clientContext: {
+          sessionId: sessionId
+        },
+        seed: seed,
+        imageModelName: 'GEM_PIX_2',
+        imageAspectRatio: aspectRatio || 'IMAGE_ASPECT_RATIO_LANDSCAPE',
+        prompt: prompt,
+        imageInputs: imageInputsArray
+      }]
+    };
 
     const response = await axiosWithRetry({
       method: 'POST',
       url: url,
-      data: requestBody,
+      data: payload,
       headers: {
         'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json+protobuf',
-        'Referer': 'https://labs.google/',
+        'Content-Type': 'text/plain;charset=UTF-8',
         'Origin': 'https://labs.google',
-        'x-goog-api-client': 'gdcl/7.2.0 gl-js/ gdcl/7.2.0',
-        'cookie': tokenObj.cookies || ''
+        'Referer': 'https://labs.google/'
       }
     }, 0, 5, laneName, tokenObj.proxy);
 
-    // Extract mediaIds from response
-    const mediaIds = response.data.mediaIds || [];
+    // Extract mediaIds from response - CORRECT path from user's example
+    const mediaIds = response.data.media?.map(m => m.image?.generatedImage?.mediaGenerationId).filter(Boolean) || [];
 
     log(`✅ [Lane: ${laneName}] Generated ${mediaIds.length} images`);
 
@@ -3749,11 +3758,7 @@ app.post('/api/flow/generate-video', async (req, res) => {
       data: payload,
       headers: {
         'Authorization': `Bearer ${token}`,
-        'Content-Type': 'text/plain;charset=UTF-8',
-        'Referer': 'https://labs.google/',
-        'x-browser-channel': 'stable',
-        'x-browser-year': '2025',
-        'x-client-data': 'CIyIywE='
+        'Content-Type': 'text/plain;charset=UTF-8'
       }
     }, 0, 5, laneName, tokenObj.proxy);
 
