@@ -3797,7 +3797,7 @@ app.post('/api/flow/update-media', async (req, res) => {
 // Flow API: Generate video with start+end images
 app.post('/api/flow/generate-video', async (req, res) => {
   try {
-    const { projectId, sceneId, startImageMediaId, endImageMediaId, prompt, aspectRatio, durationSeconds, videoModelKey, tokenName } = req.body;
+    const { projectId, sceneId, startImageMediaId, endImageMediaId, prompt, aspectRatio, durationSeconds, videoModelKey, tokenName, forceModel } = req.body;
 
     // CRITICAL: Use specific lane token if laneName provided
     let tokenObj;
@@ -3824,20 +3824,31 @@ app.post('/api/flow/generate-video', async (req, res) => {
     const sessionId = generateSessionId();
     const url = 'https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoStartAndEndImage';
 
-    // Try FREE model first, then PAID if fails
-    const models = [
-      { key: 'veo_3_1_i2v_s_fast_fl_ultra_relaxed', name: 'FREE (không mất credit)' },
-      { key: 'veo_3_1_i2v_s_fast_ultra_fl', name: 'PAID (mất credit)' }
-    ];
+    // Determine which models to try based on forceModel parameter
+    let models;
+    if (forceModel === 'FREE') {
+      models = [{ key: 'veo_3_1_i2v_s_fast_fl_ultra_relaxed', name: 'FREE (không mất credit)' }];
+    } else if (forceModel === 'PAID') {
+      models = [{ key: 'veo_3_1_i2v_s_fast_ultra_fl', name: 'PAID (mất credit)' }];
+    } else {
+      // Default: Try FREE first, then PAID if fails
+      models = [
+        { key: 'veo_3_1_i2v_s_fast_fl_ultra_relaxed', name: 'FREE (không mất credit)' },
+        { key: 'veo_3_1_i2v_s_fast_ultra_fl', name: 'PAID (mất credit)' }
+      ];
+    }
     let successResponse = null;
     let usedModel = null;
 
     for (const modelInfo of models) {
       const model = modelInfo.key;
-      const seed = Math.floor(Math.random() * 65536);
       const isFree = model === 'veo_3_1_i2v_s_fast_fl_ultra_relaxed';
 
       log(`🎬 [Lane: ${laneName}] Trying ${modelInfo.name}...`);
+
+      // Generate 2 variants with different seeds
+      const seed1 = Math.floor(Math.random() * 65536);
+      const seed2 = Math.floor(Math.random() * 65536);
 
       const payload = {
         clientContext: {
@@ -3846,15 +3857,28 @@ app.post('/api/flow/generate-video', async (req, res) => {
           tool: 'PINHOLE',
           userPaygateTier: 'PAYGATE_TIER_TWO'
         },
-        requests: [{
-          aspectRatio: aspectRatio || 'VIDEO_ASPECT_RATIO_LANDSCAPE',
-          seed: seed,
-          textInput: { prompt: prompt },
-          videoModelKey: model,
-          startImage: { mediaId: startImageMediaId },
-          endImage: { mediaId: endImageMediaId },
-          metadata: { sceneId: sceneId || crypto.randomUUID() }
-        }]
+        requests: [
+          // Variant 1 (A)
+          {
+            aspectRatio: aspectRatio || 'VIDEO_ASPECT_RATIO_LANDSCAPE',
+            seed: seed1,
+            textInput: { prompt: prompt },
+            videoModelKey: model,
+            startImage: { mediaId: startImageMediaId },
+            endImage: { mediaId: endImageMediaId },
+            metadata: { sceneId: sceneId || crypto.randomUUID() }
+          },
+          // Variant 2 (B)
+          {
+            aspectRatio: aspectRatio || 'VIDEO_ASPECT_RATIO_LANDSCAPE',
+            seed: seed2,
+            textInput: { prompt: prompt },
+            videoModelKey: model,
+            startImage: { mediaId: startImageMediaId },
+            endImage: { mediaId: endImageMediaId },
+            metadata: { sceneId: crypto.randomUUID() }  // Different sceneId for variant B
+          }
+        ]
       };
 
       try {
@@ -3868,14 +3892,19 @@ app.post('/api/flow/generate-video', async (req, res) => {
           }
         }, 0, 5, laneName, tokenObj.proxy);
 
-        const operation = response.data.operations?.[0];
-        if (operation && operation.status === 'MEDIA_GENERATION_STATUS_PENDING') {
-          log(`✅ [Lane: ${laneName}] SUCCESS with ${modelInfo.name}!`);
+        // Check if ALL variants succeeded (both should be PENDING)
+        const operations = response.data.operations || [];
+        const allPending = operations.length === 2 &&
+                          operations.every(op => op.status === 'MEDIA_GENERATION_STATUS_PENDING');
+
+        if (allPending) {
+          log(`✅ [Lane: ${laneName}] SUCCESS with ${modelInfo.name}! Generated ${operations.length} variants`);
           successResponse = response;
           usedModel = model;
           break; // Success, stop trying
         } else {
-          log(`⚠️ [Lane: ${laneName}] ${modelInfo.name} returned status: ${operation?.status}, trying next model...`, 'warn');
+          const statuses = operations.map(op => op.status).join(', ');
+          log(`⚠️ [Lane: ${laneName}] ${modelInfo.name} returned statuses: [${statuses}], trying next model...`, 'warn');
         }
       } catch (err) {
         log(`⚠️ [Lane: ${laneName}] ${modelInfo.name} failed: ${err.message}, trying next model...`, 'warn');
@@ -4530,18 +4559,15 @@ app.post('/api/save-reference', async (req, res) => {
       });
     }
 
-    // Validate that the reference base directory exists (D:\1\Ref)
+    // Auto-create reference base directory if it doesn't exist
     try {
-      await fs.access(refFolderPath);
-      const stats = await fs.stat(refFolderPath);
-      if (!stats.isDirectory()) {
-        throw new Error('Path is not a directory');
-      }
+      await fs.mkdir(refFolderPath, { recursive: true });
+      log(`✓ Reference base directory ready: ${refFolderPath}`);
     } catch (err) {
-      log(`❌ Reference base directory does not exist: ${refFolderPath}`, 'error');
+      log(`❌ Failed to create reference base directory: ${refFolderPath}`, 'error');
       return res.json({
         success: false,
-        error: `Thư mục Reference không tồn tại: ${refFolderPath}\n\nVui lòng tạo thư mục này trước hoặc chọn thư mục khác.`
+        error: `Không thể tạo thư mục Reference: ${refFolderPath}\n\nLỗi: ${err.message}`
       });
     }
 

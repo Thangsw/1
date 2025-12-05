@@ -2782,7 +2782,21 @@ Camera moves forward into the scene
       updateStats();
 
       try {
-        log(`\n🎬 [Video ${sceneIndex + 1}] Đang gen (attempt ${attempts + 1}/${MAX_RETRIES}) từ ảnh ${img1.index + 1} + ${img2.index + 1}...`, 'info');
+        // Determine which model to use based on attempt:
+        // Attempts 1-2: FREE only
+        // Attempts 3-5: PAID only
+        const MAX_FREE_ATTEMPTS = 2;
+        const MAX_TOTAL_ATTEMPTS = 5;
+        let forceModel = null;
+
+        if (attempts < MAX_FREE_ATTEMPTS) {
+          forceModel = 'FREE';
+          log(`\n🎬 [Video ${sceneIndex + 1}] 🆓 FREE attempt ${attempts + 1}/${MAX_FREE_ATTEMPTS} từ ảnh ${img1.index + 1} + ${img2.index + 1}...`, 'info');
+        } else {
+          forceModel = 'PAID';
+          const paidAttempt = attempts - MAX_FREE_ATTEMPTS + 1;
+          log(`\n🎬 [Video ${sceneIndex + 1}] 💳 PAID attempt ${paidAttempt}/3 từ ảnh ${img1.index + 1} + ${img2.index + 1}...`, 'info');
+        }
         log(`📝 [Video ${sceneIndex + 1}] Prompt: "${prompt.substring(0, 50)}..."`, 'info');
 
         // Check for continue/extend
@@ -2847,7 +2861,8 @@ Camera moves forward into the scene
               endImageMediaId: mediaId2,
               prompt: cleanPrompt,
               aspectRatio: state.aspectRatio.replace('IMAGE_', 'VIDEO_'),
-              durationSeconds: 5
+              durationSeconds: 5,
+              forceModel: forceModel  // Force FREE or PAID based on attempt
             })
           });
 
@@ -2928,21 +2943,26 @@ Camera moves forward into the scene
           log(`🚫 [Video ${sceneIndex + 1}] 429 detected! Blocking new requests...`, 'error');
         }
 
-        // Retry logic
-        if (attempts < MAX_RETRIES - 1) {
+        // Retry logic: FREE (2 attempts) → PAID (3 attempts) = 5 total
+        const MAX_TOTAL_ATTEMPTS = 5;
+        if (attempts < MAX_TOTAL_ATTEMPTS - 1) {
           let retryDelay;
           if (is429) {
             // 429 retry delays: 10s, 20s, 30s
-            const retryDelays = [10000, 20000, 30000];
+            const retryDelays = [10000, 20000, 30000, 30000, 30000];
             retryDelay = retryDelays[attempts] || 30000;
           } else {
             retryDelay = 3000;
           }
           const delaySeconds = Math.round(retryDelay / 1000);
 
-          log(`🔄 [Video ${sceneIndex + 1}] ${is429 ? '⚠️ Rate limit (429)! ' : ''}Retry lần ${attempts + 1} sau ${delaySeconds}s...`, 'warning');
+          // Determine next attempt model
+          const nextAttempt = attempts + 1;
+          const nextModel = nextAttempt < 2 ? '🆓 FREE' : '💳 PAID';
+          log(`🔄 [Video ${sceneIndex + 1}] ${is429 ? '⚠️ Rate limit (429)! ' : ''}Retry với ${nextModel} sau ${delaySeconds}s...`, 'warning');
+
           await sleep(retryDelay);
-          task.attempts = attempts + 1;
+          task.attempts = nextAttempt;
 
           const result = await generateVideoWithRetry(task);
 
@@ -2954,15 +2974,15 @@ Camera moves forward into the scene
 
           return result;
         } else {
-          // Max retries reached, add to failed list
-          log(`❌ [Video ${sceneIndex + 1}] Đã thất bại sau ${MAX_RETRIES} lần thử`, 'error');
+          // Max retries reached (5 attempts: 2 FREE + 3 PAID), add to failed list
+          log(`❌ [Video ${sceneIndex + 1}] Đã thất bại sau ${MAX_TOTAL_ATTEMPTS} lần thử (2 FREE + 3 PAID)`, 'error');
           state.failedVideos.push({
             img1,
             img2,
             prompt,
             sceneIndex,
             error: err.message,
-            attempts: MAX_RETRIES
+            attempts: MAX_TOTAL_ATTEMPTS
           });
           updateStats();
 
