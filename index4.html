@@ -657,15 +657,16 @@
 
       testBtn.disabled = true;
       testBtn.textContent = '⏳ Đang gen...';
-      testStatus.textContent = `⏳ Đang gen images + video cho ${selectedLanes.length} lanes với Flow API...`;
-      appendLog(`🚀 TEST 1: Flow API - Gen Ảnh → Video với ${selectedLanes.length} lanes`, 'info');
-      appendLog(`📸 Image prompts: "${imagePrompt1}" + "${imagePrompt2}"`, 'info');
+      testStatus.textContent = `⏳ Đang gen 2 ảnh + video cho ${selectedLanes.length} lanes với Flow API...`;
+      appendLog(`🚀 TEST 1: Flow API - Gen 2 Ảnh riêng → Video với ${selectedLanes.length} lanes`, 'info');
+      appendLog(`📸 Image 1: "${imagePrompt1}"`, 'info');
+      appendLog(`📸 Image 2: "${imagePrompt2}"`, 'info');
       appendLog(`🎬 Video prompt: "${videoPrompt}"`, 'info');
 
       try {
-        // Run all lanes in parallel using Flow API
+        // Run all lanes in parallel - gen 2 ảnh riêng từ 2 prompts riêng
         const allPromises = selectedLanes.map(laneName =>
-          runFlowApiWorkflow(laneName, imagePrompt1 + '. ' + imagePrompt2, videoPrompt, aspectRatio)
+          runTest1Workflow(laneName, imagePrompt1, imagePrompt2, videoPrompt, aspectRatio)
         );
 
         await Promise.allSettled(allPromises);
@@ -686,6 +687,102 @@
       } finally {
         testBtn.disabled = false;
         testBtn.textContent = '🚀 TEST 1: Gen Ảnh → Video';
+      }
+    }
+
+    // NEW: Quy trình đúng theo index3 - gen 2 ảnh riêng, sau đó gen video
+    async function runTest1Workflow(laneName, imagePrompt1, imagePrompt2, videoPrompt, aspectRatio) {
+      const resultKey = `${laneName}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      appendLog(`📸 [${laneName}] Bắt đầu quy trình: Gen ảnh 1 → Gen ảnh 2 → Gen video...`, 'info');
+
+      videoResults.set(resultKey, { status: 'generating', laneName, prompt: videoPrompt });
+      updateVideoResultsUI();
+
+      try {
+        const flowApi = await getFlowApiInstance(laneName);
+
+        // Convert aspect ratio
+        const imageAspectRatio = aspectRatio.replace('VIDEO_ASPECT_RATIO_', 'IMAGE_ASPECT_RATIO_');
+
+        // STEP 1: Gen ảnh 1
+        appendLog(`[${laneName}] 🎨 Gen ảnh 1: "${imagePrompt1.substring(0, 40)}..."`, 'info');
+        const result1 = await flowApi.generateImages(imagePrompt1, {
+          aspectRatio: imageAspectRatio,
+          numImages: 1,
+          tokenName: laneName
+        });
+
+        if (!result1.success || !result1.mediaIds || result1.mediaIds.length === 0) {
+          throw new Error('Gen ảnh 1 thất bại: ' + (result1.error || 'No mediaIds'));
+        }
+
+        const mediaId1 = result1.mediaIds[0];
+        appendLog(`[${laneName}] ✅ Ảnh 1 OK: ${mediaId1.substring(0, 40)}...`, 'success');
+
+        // STEP 2: Gen ảnh 2
+        appendLog(`[${laneName}] 🎨 Gen ảnh 2: "${imagePrompt2.substring(0, 40)}..."`, 'info');
+        const result2 = await flowApi.generateImages(imagePrompt2, {
+          aspectRatio: imageAspectRatio,
+          numImages: 1,
+          tokenName: laneName
+        });
+
+        if (!result2.success || !result2.mediaIds || result2.mediaIds.length === 0) {
+          throw new Error('Gen ảnh 2 thất bại: ' + (result2.error || 'No mediaIds'));
+        }
+
+        const mediaId2 = result2.mediaIds[0];
+        appendLog(`[${laneName}] ✅ Ảnh 2 OK: ${mediaId2.substring(0, 40)}...`, 'success');
+
+        // Display 2 images
+        displayLaneImages(laneName, [mediaId1, mediaId2]);
+
+        // STEP 3: Gen video từ 2 ảnh
+        appendLog(`[${laneName}] 🎬 Gen video từ 2 ảnh: "${videoPrompt.substring(0, 40)}..."`, 'info');
+        const videoResult = await flowApi.generateVideo(mediaId1, mediaId2, videoPrompt, {
+          aspectRatio: aspectRatio,
+          tokenName: laneName
+        });
+
+        if (!videoResult.success) {
+          throw new Error('Gen video thất bại: ' + (videoResult.error || 'Unknown error'));
+        }
+
+        // Poll video status
+        appendLog(`[${laneName}] ⏳ Polling video status...`, 'info');
+        if (videoResult.data && videoResult.data.operations && videoResult.data.operations.length > 0) {
+          const opName = videoResult.data.operations[0].operation?.name;
+          if (opName) {
+            const pollResult = await VideoVeo3.pollOperation(opName, {
+              tokenName: laneName,
+              intervalMs: 5000,
+              maxTries: 120
+            });
+
+            if (pollResult.video && pollResult.video.url) {
+              videoResults.set(resultKey, {
+                status: 'success',
+                laneName,
+                prompt: videoPrompt,
+                videoUrl: pollResult.video.url,
+                mediaId: pollResult.video.mediaId
+              });
+              appendLog(`🎉 [${laneName}] Video gen thành công!`, 'success');
+              updateVideoResultsUI();
+            } else {
+              throw new Error('Polling failed or no video URL');
+            }
+          } else {
+            throw new Error('No operation name in response');
+          }
+        } else {
+          throw new Error('No operations in video result');
+        }
+
+      } catch (err) {
+        appendLog(`❌ [${laneName}] Lỗi Flow API: ${err.message}`, 'error');
+        videoResults.set(resultKey, { status: 'error', laneName, error: err.message });
+        updateVideoResultsUI();
       }
     }
 
