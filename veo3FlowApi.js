@@ -50,72 +50,40 @@ class Veo3FlowApi {
       aspectRatio = 'IMAGE_16_9',
       numImages = 4,
       guidanceScale = 'MEDIUM',
-      imageInputs = []
+      imageInputs = [],
+      tokenName = null
     } = options;
 
-    const sessionId = this.generateSessionId();
+    // Call via server endpoint to avoid CORS
+    const url = `${this.serverUrl}/api/flow/generate-images`;
 
     const requestBody = {
       projectId: this.projectId,
       sceneId: this.sceneId,
-      prompts: [prompt],
+      prompt: prompt,
       aspectRatio: aspectRatio,
-      numberOfImages: numImages,
-      guidanceScale: guidanceScale
+      numImages: numImages,
+      guidanceScale: guidanceScale,
+      imageInputs: imageInputs,
+      tokenName: tokenName
     };
-
-    // Add imageInputs for continue mode
-    if (imageInputs && imageInputs.length > 0) {
-      requestBody.imageInputs = imageInputs;
-    }
-
-    const url = `https://videofx-prd.googleapis.com/v1/projects/${this.projectId}/flowMedia:batchGenerateImages`;
-
-    const headers = {
-      'accept': '*/*',
-      'accept-language': 'en-US,en;q=0.9',
-      'authorization': this.authorization,
-      'content-type': 'application/json+protobuf',
-      'origin': 'https://labs.google',
-      'referer': 'https://labs.google/',
-      'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-      'sec-ch-ua-mobile': '?0',
-      'sec-ch-ua-platform': '"Windows"',
-      'sec-fetch-dest': 'empty',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-site': 'cross-site',
-      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      'x-client-data': 'CIq2yQEIorbJAQipncoBCN6iywEIlaHLAQj0x8wBCOPczgEYqfzNARj6kM4B',
-      'x-goog-api-client': 'gdcl/7.2.0 gl-js/ gdcl/7.2.0',
-      'x-goog-ext-353267353-jspb': '[null,null,null,116]'
-    };
-
-    if (this.cookies) {
-      headers['cookie'] = this.cookies;
-    }
 
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: headers,
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify(requestBody)
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`batchGenerateImages failed: ${response.status} - ${errorText}`);
-      }
-
       const result = await response.json();
 
-      return {
-        success: true,
-        sessionId: sessionId,
-        mediaIds: result.mediaIds || [],
-        projectId: this.projectId,
-        sceneId: this.sceneId,
-        data: result
-      };
+      if (!result.success) {
+        throw new Error(result.error || 'batchGenerateImages failed');
+      }
+
+      return result;
     } catch (error) {
       console.error('Error in generateImages:', error);
       return {
@@ -134,65 +102,35 @@ class Veo3FlowApi {
    * @returns {Promise<Object>} Update result
    */
   async updateFlowMedia(mediaId, options = {}) {
-    const { isIngredient = true } = options;
+    const { isIngredient = true, tokenName = null } = options;
+
+    // Call via server endpoint to avoid CORS
+    const url = `${this.serverUrl}/api/flow/update-media`;
 
     const requestBody = {
-      "0": {
-        "json": {
-          "projectId": this.projectId,
-          "sceneId": this.sceneId,
-          "flowMedia": {
-            "mediaId": mediaId,
-            "isIngredient": isIngredient
-          }
-        }
-      }
+      projectId: this.projectId,
+      sceneId: this.sceneId,
+      mediaId: mediaId,
+      isIngredient: isIngredient,
+      tokenName: tokenName
     };
-
-    const url = 'https://labs.google/fx/api/trpc/videoFx.updateFlowMedia?batch=1';
-
-    const headers = {
-      'accept': '*/*',
-      'accept-language': 'en-US,en;q=0.9',
-      'authorization': this.authorization,
-      'content-type': 'application/json',
-      'origin': 'https://labs.google',
-      'referer': 'https://labs.google/fx/tools/video-fx',
-      'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-      'sec-ch-ua-mobile': '?0',
-      'sec-ch-ua-platform': '"Windows"',
-      'sec-fetch-dest': 'empty',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-site': 'same-origin',
-      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      'x-client-data': 'CIq2yQEIorbJAQipncoBCN6iywEIlaHLAQj0x8wBCOPczgEYqfzNARj6kM4B',
-      'x-same-domain': '1'
-    };
-
-    if (this.cookies) {
-      headers['cookie'] = this.cookies;
-    }
 
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: headers,
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify(requestBody)
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`updateFlowMedia failed: ${response.status} - ${errorText}`);
-      }
-
       const result = await response.json();
 
-      return {
-        success: true,
-        mediaId: mediaId,
-        isIngredient: isIngredient,
-        data: result
-      };
+      if (!result.success) {
+        throw new Error(result.error || 'updateFlowMedia failed');
+      }
+
+      return result;
     } catch (error) {
       console.error('Error in updateFlowMedia:', error);
       return {
@@ -217,7 +155,8 @@ class Veo3FlowApi {
     const {
       aspectRatio = 'VIDEO_16_9',
       durationSeconds = 5,
-      modelKeys = this.videoModels
+      modelKeys = this.videoModels,
+      tokenName = null
     } = options;
 
     if (!Array.isArray(mediaIds) || mediaIds.length !== 2) {
@@ -238,7 +177,8 @@ class Veo3FlowApi {
           prompt,
           aspectRatio,
           durationSeconds,
-          videoModelKey
+          videoModelKey,
+          tokenName
         );
 
         if (result.success) {
@@ -270,72 +210,37 @@ class Veo3FlowApi {
    * Internal method to generate video with specific model
    * @private
    */
-  async _generateVideoWithModel(mediaIds, prompt, aspectRatio, durationSeconds, videoModelKey) {
-    const sessionId = this.generateSessionId();
+  async _generateVideoWithModel(mediaIds, prompt, aspectRatio, durationSeconds, videoModelKey, tokenName = null) {
+    // Call via server endpoint to avoid CORS
+    const url = `${this.serverUrl}/api/flow/generate-video`;
 
     const requestBody = {
       projectId: this.projectId,
       sceneId: this.sceneId,
+      startImageMediaId: mediaIds[0],
+      endImageMediaId: mediaIds[1],
       prompt: prompt,
       aspectRatio: aspectRatio,
       durationSeconds: durationSeconds,
       videoModelKey: videoModelKey,
-      startImageGenerationMediaId: mediaIds[0],
-      endImageGenerationMediaId: mediaIds[1]
+      tokenName: tokenName
     };
-
-    const url = `https://labs.google/fx/api/trpc/videoFx.batchAsyncGenerateVideoStartAndEndImage?batch=1`;
-
-    const payload = {
-      "0": {
-        "json": requestBody
-      }
-    };
-
-    const headers = {
-      'accept': '*/*',
-      'accept-language': 'en-US,en;q=0.9',
-      'authorization': this.authorization,
-      'content-type': 'application/json',
-      'origin': 'https://labs.google',
-      'referer': 'https://labs.google/fx/tools/video-fx',
-      'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-      'sec-ch-ua-mobile': '?0',
-      'sec-ch-ua-platform': '"Windows"',
-      'sec-fetch-dest': 'empty',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-site': 'same-origin',
-      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      'x-client-data': 'CIq2yQEIorbJAQipncoBCN6iywEIlaHLAQj0x8wBCOPczgEYqfzNARj6kM4B',
-      'x-same-domain': '1'
-    };
-
-    if (this.cookies) {
-      headers['cookie'] = this.cookies;
-    }
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: headers,
-      body: JSON.stringify(payload)
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Video generation failed: ${response.status} - ${errorText}`);
-    }
 
     const result = await response.json();
 
-    return {
-      success: true,
-      sessionId: sessionId,
-      videoModelKey: videoModelKey,
-      projectId: this.projectId,
-      sceneId: this.sceneId,
-      mediaIds: mediaIds,
-      data: result
-    };
+    if (!result.success) {
+      throw new Error(result.error || `Video generation failed`);
+    }
+
+    return result;
   }
 
   /**
@@ -410,7 +315,8 @@ class Veo3FlowApi {
       imageAspectRatio = 'IMAGE_16_9',
       videoAspectRatio = 'VIDEO_16_9',
       numImages = 4,
-      durationSeconds = 5
+      durationSeconds = 5,
+      tokenName = null
     } = options;
 
     try {
@@ -418,7 +324,8 @@ class Veo3FlowApi {
       console.log('📸 Step 1: Generating images...');
       const imageResult = await this.generateImages(imagePrompt, {
         aspectRatio: imageAspectRatio,
-        numImages: numImages
+        numImages: numImages,
+        tokenName: tokenName
       });
 
       if (!imageResult.success) {
@@ -435,8 +342,8 @@ class Veo3FlowApi {
       // Step 2: Mark first 2 images as ingredients
       console.log('🏷️  Step 2: Marking images as ingredients...');
       await Promise.all([
-        this.updateFlowMedia(mediaIds[0], { isIngredient: true }),
-        this.updateFlowMedia(mediaIds[1], { isIngredient: true })
+        this.updateFlowMedia(mediaIds[0], { isIngredient: true, tokenName: tokenName }),
+        this.updateFlowMedia(mediaIds[1], { isIngredient: true, tokenName: tokenName })
       ]);
 
       console.log('✅ Images marked as ingredients');
@@ -448,7 +355,8 @@ class Veo3FlowApi {
         videoPrompt,
         {
           aspectRatio: videoAspectRatio,
-          durationSeconds: durationSeconds
+          durationSeconds: durationSeconds,
+          tokenName: tokenName
         }
       );
 

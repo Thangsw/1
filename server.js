@@ -3562,6 +3562,218 @@ app.post('/api/veo3/poll-operation', async (req, res) => {
   }
 });
 
+// ============================================
+// FLOW API ENDPOINTS (Proxy for veo3FlowApi.js)
+// ============================================
+
+// Flow API: Generate images (batchGenerateImages)
+app.post('/api/flow/generate-images', async (req, res) => {
+  try {
+    const { projectId, sceneId, prompt, aspectRatio, numImages, guidanceScale, imageInputs, tokenName } = req.body;
+
+    // Get token from lane
+    const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
+    const laneName = tokenObj.name || 'default';
+
+    log(`📸 [Lane: ${laneName}] Flow API - Generate images: "${prompt.substring(0, 50)}..."`);
+
+    const token = await getAccessToken(false, tokenObj);
+    const sessionId = generateSessionId();
+
+    const requestBody = {
+      projectId: projectId,
+      sceneId: sceneId,
+      prompts: [prompt],
+      aspectRatio: aspectRatio,
+      numberOfImages: numImages || 4,
+      guidanceScale: guidanceScale || 'MEDIUM'
+    };
+
+    if (imageInputs && imageInputs.length > 0) {
+      requestBody.imageInputs = imageInputs;
+    }
+
+    const url = `https://videofx-prd.googleapis.com/v1/projects/${projectId}/flowMedia:batchGenerateImages`;
+
+    const response = await axiosWithRetry({
+      method: 'POST',
+      url: url,
+      data: requestBody,
+      headers: {
+        'accept': '*/*',
+        'accept-language': 'en-US,en;q=0.9',
+        'authorization': `Bearer ${token}`,
+        'content-type': 'application/json+protobuf',
+        'origin': 'https://labs.google',
+        'referer': 'https://labs.google/',
+        'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'cross-site',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'x-client-data': 'CIq2yQEIorbJAQipncoBCN6iywEIlaHLAQj0x8wBCOPczgEYqfzNARj6kM4B',
+        'x-goog-api-client': 'gdcl/7.2.0 gl-js/ gdcl/7.2.0',
+        'x-goog-ext-353267353-jspb': '[null,null,null,116]',
+        'cookie': tokenObj.cookies || ''
+      }
+    }, 0, 5, laneName, tokenObj.proxy);
+
+    log(`✅ [Lane: ${laneName}] Generated ${response.data.mediaIds?.length || 0} images`);
+
+    res.json({
+      success: true,
+      sessionId: sessionId,
+      mediaIds: response.data.mediaIds || [],
+      projectId: projectId,
+      sceneId: sceneId,
+      data: response.data
+    });
+  } catch (err) {
+    log(`✗ Flow API generate-images failed: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Flow API: Update flow media (mark as ingredient)
+app.post('/api/flow/update-media', async (req, res) => {
+  try {
+    const { projectId, sceneId, mediaId, isIngredient, tokenName } = req.body;
+
+    const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
+    const laneName = tokenObj.name || 'default';
+
+    log(`🏷️  [Lane: ${laneName}] Flow API - Update media: ${mediaId.substring(0, 30)}...`);
+
+    const token = await getAccessToken(false, tokenObj);
+
+    const requestBody = {
+      "0": {
+        "json": {
+          "projectId": projectId,
+          "sceneId": sceneId,
+          "flowMedia": {
+            "mediaId": mediaId,
+            "isIngredient": isIngredient !== false
+          }
+        }
+      }
+    };
+
+    const url = 'https://labs.google/fx/api/trpc/videoFx.updateFlowMedia?batch=1';
+
+    const response = await axiosWithRetry({
+      method: 'POST',
+      url: url,
+      data: requestBody,
+      headers: {
+        'accept': '*/*',
+        'accept-language': 'en-US,en;q=0.9',
+        'authorization': `Bearer ${token}`,
+        'content-type': 'application/json',
+        'origin': 'https://labs.google',
+        'referer': 'https://labs.google/fx/tools/video-fx',
+        'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'x-client-data': 'CIq2yQEIorbJAQipncoBCN6iywEIlaHLAQj0x8wBCOPczgEYqfzNARj6kM4B',
+        'x-same-domain': '1',
+        'cookie': tokenObj.cookies || ''
+      }
+    }, 0, 5, laneName, tokenObj.proxy);
+
+    log(`✅ [Lane: ${laneName}] Media updated as ingredient`);
+
+    res.json({
+      success: true,
+      mediaId: mediaId,
+      isIngredient: isIngredient,
+      data: response.data
+    });
+  } catch (err) {
+    log(`✗ Flow API update-media failed: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Flow API: Generate video with start+end images
+app.post('/api/flow/generate-video', async (req, res) => {
+  try {
+    const { projectId, sceneId, startImageMediaId, endImageMediaId, prompt, aspectRatio, durationSeconds, videoModelKey, tokenName } = req.body;
+
+    const tokenObj = tokenName ? getTokenByName(tokenName) : getNextToken();
+    const laneName = tokenObj.name || 'default';
+
+    log(`🎬 [Lane: ${laneName}] Flow API - Generate video: "${prompt.substring(0, 50)}..."`);
+
+    const token = await getAccessToken(false, tokenObj);
+    const sessionId = generateSessionId();
+
+    const requestBody = {
+      projectId: projectId,
+      sceneId: sceneId,
+      prompt: prompt,
+      aspectRatio: aspectRatio || 'VIDEO_16_9',
+      durationSeconds: durationSeconds || 5,
+      videoModelKey: videoModelKey || 'veo_3_1_i2v_s_fast_fl_ultra_relaxed',
+      startImageGenerationMediaId: startImageMediaId,
+      endImageGenerationMediaId: endImageMediaId
+    };
+
+    const url = 'https://labs.google/fx/api/trpc/videoFx.batchAsyncGenerateVideoStartAndEndImage?batch=1';
+
+    const payload = {
+      "0": {
+        "json": requestBody
+      }
+    };
+
+    const response = await axiosWithRetry({
+      method: 'POST',
+      url: url,
+      data: payload,
+      headers: {
+        'accept': '*/*',
+        'accept-language': 'en-US,en;q=0.9',
+        'authorization': `Bearer ${token}`,
+        'content-type': 'application/json',
+        'origin': 'https://labs.google',
+        'referer': 'https://labs.google/fx/tools/video-fx',
+        'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'x-client-data': 'CIq2yQEIorbJAQipncoBCN6iywEIlaHLAQj0x8wBCOPczgEYqfzNARj6kM4B',
+        'x-same-domain': '1',
+        'cookie': tokenObj.cookies || ''
+      }
+    }, 0, 5, laneName, tokenObj.proxy);
+
+    log(`✅ [Lane: ${laneName}] Video generation started with model: ${videoModelKey}`);
+
+    res.json({
+      success: true,
+      sessionId: sessionId,
+      videoModelKey: videoModelKey,
+      projectId: projectId,
+      sceneId: sceneId,
+      mediaIds: [startImageMediaId, endImageMediaId],
+      data: response.data
+    });
+  } catch (err) {
+    log(`✗ Flow API generate-video failed: ${err.message}`, 'error');
+    res.json({ success: false, error: err.message });
+  }
+});
+
 // Generate video from 1 image (start only)
 // OLD ENDPOINT - REMOVED (duplicate, causes conflicts)
 
