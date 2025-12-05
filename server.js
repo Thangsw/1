@@ -3546,6 +3546,7 @@ app.post('/api/veo3/poll-operation', async (req, res) => {
           res.json({
             success: true,
             done: true,
+            operations: data.operations,  // Include for status logging
             video: {
               url: video.fifeUrl,
               mediaId: operation.mediaGenerationId || video.mediaGenerationId
@@ -3555,6 +3556,7 @@ app.post('/api/veo3/poll-operation', async (req, res) => {
           res.json({
             success: true,
             done: true,
+            operations: data.operations,
             error: 'No video URL in successful response'
           });
         }
@@ -3563,13 +3565,15 @@ app.post('/api/veo3/poll-operation', async (req, res) => {
         res.json({
           success: true,
           done: true,
+          operations: data.operations,
           error: `Video generation ${operation.status}`
         });
       } else {
         // Still PENDING or ACTIVE
         res.json({
           success: true,
-          done: false
+          done: false,
+          operations: data.operations  // Include for status logging
         });
       }
     } else {
